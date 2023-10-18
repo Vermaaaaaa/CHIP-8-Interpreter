@@ -30,6 +30,11 @@ typedef enum{
 
 typedef struct{
     emu_state state;
+    uint8_t ram[4096]; //Ram for the chip 8
+    bool display[64*32]; //Decided to have seperate arrays for display instead of a pointer to ram. May change if I move onto super chip
+    uint16_t stack[48]; 
+    uint8_t V[16]; //Registers from V0-Vf
+    uint16_t I; //Index Register  
 
 } chip8_type;
 
@@ -80,6 +85,11 @@ void set_config(config_type *config){
 
 }
 
+int init_chip8(chip8_type *chip8){
+    chip8->state = RUNNING;
+    return 0; //Success
+}
+
 void clear_screen(sdl_type *sdl, const config_type config){
     const uint8_t r  = (uint8_t) (config.bg_colour >> 24); //Convert our background from 32 bit to 8 so each can be read as a seperate rgb value
     const uint8_t g  = (uint8_t) (config.bg_colour >> 16);
@@ -96,8 +106,29 @@ void update_screen(sdl_type *sdl){
 
 }
 
-void user_input(){
+void user_input(chip8_type *chip8){
     SDL_Event event;
+
+    switch(event.type){
+        case SDL_QUIT:{chip8->state = QUIT; return; break;} 
+        case SDL_KEYDOWN:{
+        switch(event.key.keysym.sym){
+            case SDLK_ESCAPE:{chip8->state = QUIT; break;} // Used keycode so the chip 8 emualtor won't be platform specific
+            default:{break;}
+        }
+
+
+
+            return; 
+            break;
+        
+        
+        
+        
+        }
+        case SDL_KEYUP:{return; break;}
+        default:{break;}
+    }
 }
 
 int main(int argc, char **argv){
@@ -109,11 +140,12 @@ int main(int argc, char **argv){
     config_type config = {0};
     chip8_type chip8 = {0}; 
     if(!init_sdl(&sdl)){exit(EXIT_FAILURE);}
-   // if(!set_config(&config)){exit(EXIT_FAILURE);}
+    //if(!set_config(&config)){exit(EXIT_FAILURE);}
+    if(!init_chip8(&chip8)){exit(EXIT_FAILURE);}
 
     clear_screen(&sdl, config);
 
-    while(true){
+    while(chip8.state!=QUIT){
         //Delay for 60Hz
         /*We need to calculate the time elapsed by instructions running and minus this from the delay 
         so the chip clocks at 60Hz still 
@@ -121,7 +153,7 @@ int main(int argc, char **argv){
         so SDL_Delay should be SDL_Delay(16 - elapsed time);
         */
 
-        user_input();
+        user_input(&chip8);
         SDL_Delay(16);
         update_screen(&sdl);
 
