@@ -6,18 +6,34 @@
 
 
 
-
+//SDL object
 typedef struct {
     SDL_Window *window;
     SDL_Renderer *renderer;
 } sdl_type;
 //Create a struct that holds our pointer to a window (More OOP approach)
 
+
+//Config Object
 typedef struct {
     uint32_t bg_colour;
     uint32_t fg_colour;
 
 } config_type;
+
+typedef enum{
+    QUIT,
+    RUNNING,
+    PAUSED,
+} emu_state;
+
+
+typedef struct{
+    emu_state state;
+
+} chip8_type;
+
+
 
 int init_sdl(sdl_type *sdl){
     if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_AUDIO) != 0){
@@ -80,19 +96,32 @@ void update_screen(sdl_type *sdl){
 
 }
 
+void user_input(){
+    SDL_Event event;
+}
+
 int main(int argc, char **argv){
     (void) argc; // Prevents Compiler Error from unused variables 
     (void) argv;
 
     // Intialise SDL 
-    config_type config = {0};
     sdl_type sdl = {0}; //Create SDL "Object"
+    config_type config = {0};
+    chip8_type chip8 = {0}; 
     if(!init_sdl(&sdl)){exit(EXIT_FAILURE);}
+   // if(!set_config(&config)){exit(EXIT_FAILURE);}
 
     clear_screen(&sdl, config);
 
     while(true){
         //Delay for 60Hz
+        /*We need to calculate the time elapsed by instructions running and minus this from the delay 
+        so the chip clocks at 60Hz still 
+        Use the system clock to measure the time diff
+        so SDL_Delay should be SDL_Delay(16 - elapsed time);
+        */
+
+        user_input();
         SDL_Delay(16);
         update_screen(&sdl);
 
