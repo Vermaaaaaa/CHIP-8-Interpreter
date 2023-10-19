@@ -1,8 +1,12 @@
+#define SDL_MAIN_HANDLED
+
 #include <stdio.h>
 #include "D:\SDL2-2.28.4\include\SDL.h"
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <windows.h>
+
 
 
 
@@ -41,7 +45,7 @@ typedef struct{
     uint8_t delay_timer;
     uint8_t sound_timer; //60Hz timers in chip 8
     bool keypad[16]; //Check if keypad is in off or on state
-    char *rom_name; // Get a command line dir for rom to load into ram
+    const char *rom_name; // Get a command line dir for rom to load into ram
 } chip8_type;
 
 
@@ -123,9 +127,9 @@ int init_chip8(chip8_type *chip8 , const char rom_name[]){
     fseek(rom, SEEK_SET, SEEK_END); // Set the cursor of the file from start to end
     const size_t rom_size = ftell(rom); // Using cursor, determines rom size
     const size_t max_size = sizeof chip8->ram - entry; // Maximum size of memory that can be allocated to programs as the from 0x0 - 0x200 is not available
-    if(rom_size > max_size){SDL_Log("ROM size is too big, Max size: %zu, ROM size: %zu" , max_size, rom_size); return 1;} // Return error if file size is too big 
+    if(rom_size > max_size){SDL_Log("ROM size is too big, Max size: %zu, ROM size: %z" , max_size, rom_size); return 1;} // Return error if file size is too big 
 
-    fread(chip8->ram[entry], rom_size, 1, rom);
+    fread(&chip8->ram[entry], rom_size, 1, rom);
 
     fclose(rom); //Close rom file 
 
@@ -157,27 +161,26 @@ void update_screen(sdl_type *sdl){
 void user_input(chip8_type *chip8){
     SDL_Event event;
 
-    switch(event.type){
+    while(SDL_PollEvent(&event)){
+        switch(event.type){
         case SDL_QUIT:{chip8->state = QUIT; return; break;} 
         case SDL_KEYDOWN:{
-        switch(event.key.keysym.sym){
-            case SDLK_ESCAPE:{chip8->state = QUIT; break;} // Used keycode so the chip 8 emualtor won't be platform specific
-            case SDLK_p:{chip8->state = PAUSED; break;}
-            default:{break;}
+            switch(event.key.keysym.sym){
+                case SDLK_ESCAPE:{chip8->state = QUIT; break;} // Used keycode so the chip 8 emualtor won't be platform specific
+                case SDLK_p:{chip8->state = PAUSED; break;}
+                default:{break;}
         }
-
-
-
             return; 
             break;
-        
-        
-        
-        
         }
+        
         case SDL_KEYUP:{return; break;}
         default:{break;}
     }
+
+
+
+    } 
 }
 
 int main(int argc, char **argv){
