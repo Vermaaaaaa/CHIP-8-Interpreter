@@ -21,13 +21,15 @@ typedef struct {
 
 } config_type;
 
+
+//Enum for emulation state
 typedef enum{
     QUIT,
     RUNNING,
     PAUSED,
 } emu_state;
 
-
+//Chip 8 object
 typedef struct{
     emu_state state;
     uint8_t ram[4096]; //Ram for the chip 8
@@ -35,11 +37,15 @@ typedef struct{
     uint16_t stack[48]; 
     uint8_t V[16]; //Registers from V0-Vf
     uint16_t I; //Index Register  
-
+    uint16_t pc;
+    uint8_t delay_timer;
+    uint8_t sound_timer; //60Hz timers in chip 8
+    bool keypad[16]; //Check if keypad is in off or on state
+    char *rom_name; // Get a command line dir for rom to load into ram
 } chip8_type;
 
 
-
+//Initialiser for sdl object 
 int init_sdl(sdl_type *sdl){
     if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_AUDIO) != 0){
         SDL_Log("SDL couldn't Initialise %s\n", SDL_GetError());
@@ -77,6 +83,8 @@ void end(sdl_type *sdl){
     //sdl = NULL;
 }
 
+
+//Set configuration for emulator (Could be better in a config file YAML,JSON, INI etc.)
 void set_config(config_type *config){
     *config = (config_type){
         .fg_colour = 0xFFFFFFFF, // White 
@@ -85,8 +93,48 @@ void set_config(config_type *config){
 
 }
 
-int init_chip8(chip8_type *chip8){
+int init_chip8(chip8_type *chip8 , const char rom_name[]){
+    const uint32_t entry = 0x200; //Entry point for roms to be loaded into memory
+    const uint8_t font[] = {
+        0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
+        0x20, 0x60, 0x20, 0x20, 0x70, // 1
+        0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
+        0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3
+        0x90, 0x90, 0xF0, 0x10, 0x10, // 4
+        0xF0, 0x80, 0xF0, 0x10, 0xF0, // 5
+        0xF0, 0x80, 0xF0, 0x90, 0xF0, // 6
+        0xF0, 0x10, 0x20, 0x40, 0x40, // 7
+        0xF0, 0x90, 0xF0, 0x90, 0xF0, // 8
+        0xF0, 0x90, 0xF0, 0x10, 0xF0, // 9
+        0xF0, 0x90, 0xF0, 0x90, 0x90, // A
+        0xE0, 0x90, 0xE0, 0x90, 0xE0, // B
+        0xF0, 0x80, 0x80, 0x80, 0xF0, // C
+        0xE0, 0x90, 0x90, 0x90, 0xE0, // D
+        0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
+        0xF0, 0x80, 0xF0, 0x80, 0x80  // F
+    }; //Fonts used by the CHIP 8
+
+    //Load Font
+    memcpy(chip8->ram, font, sizeof(font));
+    //Open/Load ROM
+    FILE *rom = fopen(rom_name, "rb"); // Set File object to read bytes as the file is raw
+    if(!rom){SDL_Log("ROM file %s is invalid or does not exist\n" ,rom_name); return 1;} //Return error if file cannot be opened
+
+    fseek(rom, SEEK_SET, SEEK_END); // Set the cursor of the file from start to end
+    const size_t rom_size = ftell(rom); // Using cursor, determines rom size
+    const size_t max_size = sizeof chip8->ram - entry; // Maximum size of memory that can be allocated to programs as the from 0x0 - 0x200 is not available
+    if(rom_size > max_size){SDL_Log("ROM size is too big, Max size: %zu, ROM size: %zu" , max_size, rom_size); return 1;} // Return error if file size is too big 
+
+    fread(chip8->ram[entry], rom_size, 1, rom);
+
+    fclose(rom); //Close rom file 
+
+
+    chip8->pc = entry;
     chip8->state = RUNNING;
+    chip8->rom_name = rom_name;
+    
+
     return 0; //Success
 }
 
@@ -114,6 +162,7 @@ void user_input(chip8_type *chip8){
         case SDL_KEYDOWN:{
         switch(event.key.keysym.sym){
             case SDLK_ESCAPE:{chip8->state = QUIT; break;} // Used keycode so the chip 8 emualtor won't be platform specific
+            case SDLK_p:{chip8->state = PAUSED; break;}
             default:{break;}
         }
 
@@ -139,13 +188,15 @@ int main(int argc, char **argv){
     sdl_type sdl = {0}; //Create SDL "Object"
     config_type config = {0};
     chip8_type chip8 = {0}; 
+    const char *rom_name = argv[1];
     if(!init_sdl(&sdl)){exit(EXIT_FAILURE);}
     //if(!set_config(&config)){exit(EXIT_FAILURE);}
-    if(!init_chip8(&chip8)){exit(EXIT_FAILURE);}
+    if(!init_chip8(&chip8, rom_name)){exit(EXIT_FAILURE);}
 
     clear_screen(&sdl, config);
 
     while(chip8.state!=QUIT){
+        if(chip8.state  == PAUSED){continue;}
         //Delay for 60Hz
         /*We need to calculate the time elapsed by instructions running and minus this from the delay 
         so the chip clocks at 60Hz still 
@@ -156,6 +207,7 @@ int main(int argc, char **argv){
         user_input(&chip8);
         SDL_Delay(16);
         update_screen(&sdl);
+        
 
     }
 
