@@ -198,7 +198,7 @@ int main(int argc, char **argv){
 
     clear_screen(&sdl, config);
 
-    while(chip8.state!=QUIT){
+    while(true){
         if(chip8.state  == PAUSED){continue;}
         //Delay for 60Hz
         /*We need to calculate the time elapsed by instructions running and minus this from the delay 
@@ -208,7 +208,7 @@ int main(int argc, char **argv){
         */
 
         user_input(&chip8);
-        SDL_Delay(16);
+        SDL_Delay(50000);
         update_screen(&sdl);
         
 
