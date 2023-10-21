@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <windows.h>
+#include <assert.h>
 
 
 
@@ -46,14 +47,23 @@ typedef struct{
     uint8_t sound_timer; //60Hz timers in chip 8
     bool keypad[16]; //Check if keypad is in off or on state
     const char *rom_name; // Get a command line dir for rom to load into ram
+    instr_type inst; 
 } chip8_type;
 
+typedef struct{
+    uint16_t opcode;
+    uint16_t NNN;   //Constants in instruction set, declaring like this would decrease space complexity
+    uint8_t NN;     
+    uint8_t N;      
+    uint8_t X;      
+    uint8_t Y;      
+} instr_type;
 
 //Initialiser for sdl object 
 int init_sdl(sdl_type *sdl){
     if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_AUDIO) != 0){
         SDL_Log("SDL couldn't Initialise %s\n", SDL_GetError());
-        return 1; // Returns 1 to show that SDL wasn't initalised
+        return 0; // Returns 0 to show that SDL wasn't initalised
     }
 
     sdl-> window = SDL_CreateWindow(
@@ -65,7 +75,7 @@ int init_sdl(sdl_type *sdl){
         SDL_WINDOW_OPENGL  
     ); //Creates Window using our pointer with said Parameters 
 
-    if(!sdl->window){SDL_Log("Could not create Window %s\n", SDL_GetError()); return 1;} //If window can't open throw error
+    if(!sdl->window){SDL_Log("Could not create Window %s\n", SDL_GetError()); return 0;} //If window can't open throw error
 
     sdl->renderer = SDL_CreateRenderer(
         sdl->window,
@@ -73,9 +83,9 @@ int init_sdl(sdl_type *sdl){
         SDL_RENDERER_ACCELERATED
     ); //Creates Renderer using our pointer with said Parameters 
 
-    if(!sdl->renderer){SDL_Log("Could not create Renderer %s\n", SDL_GetError()); return 1;} //If renderer can't initialise throw error
+    if(!sdl->renderer){SDL_Log("Could not create Renderer %s\n", SDL_GetError()); return 0;} //If renderer can't initialise throw error
 
-    return 0; // Success
+    return 1; // Success
 }
 
 
@@ -83,8 +93,8 @@ int init_sdl(sdl_type *sdl){
 void end(sdl_type *sdl){
     SDL_DestroyRenderer(sdl->renderer); // Destroys the Renderer
     SDL_DestroyWindow(sdl->window); // Destroys the window
+    sdl->window = NULL;
     SDL_Quit(); //Shutsdown SDL
-    //sdl = NULL;
 }
 
 
@@ -122,12 +132,13 @@ int init_chip8(chip8_type *chip8 , const char rom_name[]){
     memcpy(chip8->ram, font, sizeof(font));
     //Open/Load ROM
     FILE *rom = fopen(rom_name, "rb"); // Set File object to read bytes as the file is raw
-    if(!rom){SDL_Log("ROM file %s is invalid or does not exist\n" ,rom_name); return 1;} //Return error if file cannot be opened
+    if(!rom){SDL_Log("ROM file %s is invalid or does not exist\n" ,rom_name); return 0;} //Return error if file cannot be opened
 
     fseek(rom, SEEK_SET, SEEK_END); // Set the cursor of the file from start to end
     const size_t rom_size = ftell(rom); // Using cursor, determines rom size
     const size_t max_size = sizeof chip8->ram - entry; // Maximum size of memory that can be allocated to programs as the from 0x0 - 0x200 is not available
-    if(rom_size > max_size){SDL_Log("ROM size is too big, Max size: %zu, ROM size: %z" , max_size, rom_size); return 1;} // Return error if file size is too big 
+    rewind(rom); //Rewind the cursor to read later
+    if(rom_size > max_size){SDL_Log("ROM size is too big, Max size: %zu, ROM size: %zu" , max_size, rom_size); return 0;} // Return error if file size is too big 
 
     fread(&chip8->ram[entry], rom_size, 1, rom);
 
@@ -139,7 +150,7 @@ int init_chip8(chip8_type *chip8 , const char rom_name[]){
     chip8->rom_name = rom_name;
     
 
-    return 0; //Success
+    return 1; //Success
 }
 
 void clear_screen(sdl_type *sdl, const config_type config){
@@ -150,12 +161,11 @@ void clear_screen(sdl_type *sdl, const config_type config){
 
     //Set Renderer Colour to background
     SDL_SetRenderDrawColor(sdl->renderer, r,g,b,a);
-    SDL_RenderClear(sdl ->renderer);
+    SDL_RenderClear(sdl->renderer);
 }
 
 void update_screen(sdl_type *sdl){
     SDL_RenderPresent(sdl->renderer);
-
 }
 
 void user_input(chip8_type *chip8){
@@ -163,19 +173,63 @@ void user_input(chip8_type *chip8){
 
     while(SDL_PollEvent(&event)){
         switch(event.type){
-        case SDL_QUIT:{chip8->state = QUIT; return; break;} 
+        case SDL_QUIT:{chip8->state = QUIT; break;} 
         case SDL_KEYDOWN:{
             switch(event.key.keysym.sym){
-                case SDLK_ESCAPE:{chip8->state = QUIT; break;} // Used keycode so the chip 8 emualtor won't be platform specific
-                case SDLK_p:{chip8->state = PAUSED; break;}
-                default:{break;}
-        }
-            return; 
+                case SDLK_ESCAPE:{SDL_Log("CHIP 8 is ");chip8->state = QUIT; break;} // Used keycode so the chip 8 emualtor won't be platform specific
+                case SDLK_p:{
+                    if(chip8->state == RUNNING){chip8->state = PAUSED; SDL_Log("CHIP 8 state is now paused");}
+                    else{chip8->state = RUNNING; SDL_Log("CHIP 8 is running");} 
+                    break;
+                }
+                case SDLK_1:{break;} //Handling Inputs 
+                case SDLK_2:{break;}
+                case SDLK_3:{break;}
+                case SDLK_4:{break;}
+
+                case SDLK_q:{break;}
+                case SDLK_w:{break;}
+                case SDLK_e:{break;}
+                case SDLK_r:{break;}
+
+                case SDLK_a:{break;}
+                case SDLK_s:{break;}
+                case SDLK_d:{break;}
+                case SDLK_f:{break;}
+
+                case SDLK_z:{break;}
+                case SDLK_x:{break;}
+                case SDLK_c:{break;}
+                case SDLK_v:{break;}
+            }
             break;
         }
         
-        case SDL_KEYUP:{return; break;}
-        default:{break;}
+        case SDL_KEYUP:{
+            switch(event.key.keysym.sym){
+                case SDLK_1:{break;}
+                case SDLK_2:{break;}
+                case SDLK_3:{break;}
+                case SDLK_4:{break;}
+
+                case SDLK_q:{break;}
+                case SDLK_w:{break;}
+                case SDLK_e:{break;}
+                case SDLK_r:{break;}
+
+                case SDLK_a:{break;}
+                case SDLK_s:{break;}
+                case SDLK_d:{break;}
+                case SDLK_f:{break;}
+                
+                case SDLK_z:{break;}
+                case SDLK_x:{break;}
+                case SDLK_c:{break;}
+                case SDLK_v:{break;}
+            }
+            break;
+            
+        }
     }
 
 
@@ -183,7 +237,8 @@ void user_input(chip8_type *chip8){
     } 
 }
 
-int main(int argc, char **argv){
+
+int main(int argc, char *argv[]){
     (void) argc; // Prevents Compiler Error from unused variables 
     (void) argv;
 
@@ -192,13 +247,15 @@ int main(int argc, char **argv){
     config_type config = {0};
     chip8_type chip8 = {0}; 
     const char *rom_name = argv[1];
+
     if(!init_sdl(&sdl)){exit(EXIT_FAILURE);}
     //if(!set_config(&config)){exit(EXIT_FAILURE);}
     if(!init_chip8(&chip8, rom_name)){exit(EXIT_FAILURE);}
 
     clear_screen(&sdl, config);
 
-    while(true){
+    while(chip8.state != QUIT){
+        user_input(&chip8);
         if(chip8.state  == PAUSED){continue;}
         //Delay for 60Hz
         /*We need to calculate the time elapsed by instructions running and minus this from the delay 
@@ -207,8 +264,7 @@ int main(int argc, char **argv){
         so SDL_Delay should be SDL_Delay(16 - elapsed time);
         */
 
-        user_input(&chip8);
-        SDL_Delay(50000);
+        SDL_Delay(16);
         update_screen(&sdl);
         
 
