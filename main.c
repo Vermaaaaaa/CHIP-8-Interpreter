@@ -34,12 +34,22 @@ typedef enum{
     PAUSED,
 } emu_state;
 
+typedef struct{
+    uint16_t opcode;
+    uint16_t NNN;   //Constants in instruction set, declaring like this would decrease space complexity
+    uint8_t NN;     
+    uint8_t N;      
+    uint8_t X;      
+    uint8_t Y;      
+} instr_type;
+
 //Chip 8 object
 typedef struct{
     emu_state state;
     uint8_t ram[4096]; //Ram for the chip 8
     bool display[64*32]; //Decided to have seperate arrays for display instead of a pointer to ram. May change if I move onto super chip
     uint16_t stack[48]; 
+    uint16_t *stkptr;
     uint8_t V[16]; //Registers from V0-Vf
     uint16_t I; //Index Register  
     uint16_t pc;
@@ -50,14 +60,7 @@ typedef struct{
     instr_type inst; 
 } chip8_type;
 
-typedef struct{
-    uint16_t opcode;
-    uint16_t NNN;   //Constants in instruction set, declaring like this would decrease space complexity
-    uint8_t NN;     
-    uint8_t N;      
-    uint8_t X;      
-    uint8_t Y;      
-} instr_type;
+
 
 //Initialiser for sdl object 
 int init_sdl(sdl_type *sdl){
@@ -176,67 +179,73 @@ void user_input(chip8_type *chip8){
         case SDL_QUIT:{chip8->state = QUIT; break;} 
         case SDL_KEYDOWN:{
             switch(event.key.keysym.sym){
-                case SDLK_ESCAPE:{SDL_Log("CHIP 8 is ");chip8->state = QUIT; break;} // Used keycode so the chip 8 emualtor won't be platform specific
+                case SDLK_ESCAPE:{SDL_Log("CHIP 8 is no longer running");chip8->state = QUIT; break;} // Used keycode so the chip 8 emualtor won't be platform specific
                 case SDLK_p:{
-                    if(chip8->state == RUNNING){chip8->state = PAUSED; SDL_Log("CHIP 8 state is now paused");}
-                    else{chip8->state = RUNNING; SDL_Log("CHIP 8 is running");} 
+                    if(chip8->state == RUNNING){chip8->state = PAUSED; SDL_Log("CHIP 8 is now paused");}
+                    else{chip8->state = RUNNING; SDL_Log("CHIP 8 is now running");} 
                     break;
                 }
-                case SDLK_1:{break;} //Handling Inputs 
-                case SDLK_2:{break;}
-                case SDLK_3:{break;}
-                case SDLK_4:{break;}
+                case SDLK_1:{chip8->keypad[0x1] =true; break;} //Handling Inputs 
+                case SDLK_2:{chip8->keypad[0x2] =true; break;}
+                case SDLK_3:{chip8->keypad[0x3] =true; break;}
+                case SDLK_4:{chip8->keypad[0xC] =true; break;}
 
-                case SDLK_q:{break;}
-                case SDLK_w:{break;}
-                case SDLK_e:{break;}
-                case SDLK_r:{break;}
+                case SDLK_q:{chip8->keypad[0x4] =true; break;}
+                case SDLK_w:{chip8->keypad[0x5] =true; break;}
+                case SDLK_e:{chip8->keypad[0x6] =true; break;}
+                case SDLK_r:{chip8->keypad[0xD] =true; break;}
 
-                case SDLK_a:{break;}
-                case SDLK_s:{break;}
-                case SDLK_d:{break;}
-                case SDLK_f:{break;}
+                case SDLK_a:{chip8->keypad[0x7] =true; break;}
+                case SDLK_s:{chip8->keypad[0x8] =true; break;}
+                case SDLK_d:{chip8->keypad[0x9] =true; break;}
+                case SDLK_f:{chip8->keypad[0xE] =true; break;}
 
-                case SDLK_z:{break;}
-                case SDLK_x:{break;}
-                case SDLK_c:{break;}
-                case SDLK_v:{break;}
+                case SDLK_z:{chip8->keypad[0xA] =true; break;}
+                case SDLK_x:{chip8->keypad[0x0] =true; break;}
+                case SDLK_c:{chip8->keypad[0xB] =true; break;}
+                case SDLK_v:{chip8->keypad[0xF] =true; break;}
             }
             break;
         }
         
         case SDL_KEYUP:{
             switch(event.key.keysym.sym){
-                case SDLK_1:{break;}
-                case SDLK_2:{break;}
-                case SDLK_3:{break;}
-                case SDLK_4:{break;}
 
-                case SDLK_q:{break;}
-                case SDLK_w:{break;}
-                case SDLK_e:{break;}
-                case SDLK_r:{break;}
+                case SDLK_1:{chip8->keypad[0x1] =false; break;} //Handling Inputs 
+                case SDLK_2:{chip8->keypad[0x2] =false; break;}
+                case SDLK_3:{chip8->keypad[0x3] =false; break;}
+                case SDLK_4:{chip8->keypad[0xC] =false; break;}
 
-                case SDLK_a:{break;}
-                case SDLK_s:{break;}
-                case SDLK_d:{break;}
-                case SDLK_f:{break;}
-                
-                case SDLK_z:{break;}
-                case SDLK_x:{break;}
-                case SDLK_c:{break;}
-                case SDLK_v:{break;}
+                case SDLK_q:{chip8->keypad[0x4] =false; break;}
+                case SDLK_w:{chip8->keypad[0x5] =false; break;}
+                case SDLK_e:{chip8->keypad[0x6] =false; break;}
+                case SDLK_r:{chip8->keypad[0xD] =false; break;}
+
+                case SDLK_a:{chip8->keypad[0x7] =false; break;}
+                case SDLK_s:{chip8->keypad[0x8] =false; break;}
+                case SDLK_d:{chip8->keypad[0x9] =false; break;}
+                case SDLK_f:{chip8->keypad[0xE] =false; break;}
+
+                case SDLK_z:{chip8->keypad[0xA] =false; break;}
+                case SDLK_x:{chip8->keypad[0x0] =false; break;}
+                case SDLK_c:{chip8->keypad[0xB] =false; break;}
+                case SDLK_v:{chip8->keypad[0xF] =false; break;}
             }
+        }
             break;
             
-        }
     }
-
-
-
-    } 
 }
 
+
+} 
+
+
+void emulate(chip8_type *chip8){
+    //bool carry; // Set our carry flag 
+
+    chip8->inst.opcode = (chip8->ram[chip8->pc] << 8 | chip8->ram[chip8->pc+1]);
+}
 
 int main(int argc, char *argv[]){
     (void) argc; // Prevents Compiler Error from unused variables 
