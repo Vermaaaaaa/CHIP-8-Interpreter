@@ -244,7 +244,30 @@ void user_input(chip8_type *chip8){
 void emulate(chip8_type *chip8){
     //bool carry; // Set our carry flag 
 
-    chip8->inst.opcode = (chip8->ram[chip8->pc] << 8 | chip8->ram[chip8->pc+1]);
+    chip8->inst.opcode = (chip8->ram[chip8->pc] << 8 | chip8->ram[chip8->pc+1]); //Have to or 2 bytes as one opcode is 2 bytes long 
+    chip8->pc += 2;
+
+    chip8->inst.NNN = chip8->inst.opcode & 0x0FFF; // NNN address
+    chip8->inst.NN = chip8->inst.opcode & 0x00FF; //NN value
+    chip8->inst.N = chip8->inst.opcode & 0x000F; //N nibble
+    chip8->inst.X = (chip8->inst.opcode >> 8) & 0x000F; // X register 
+    chip8->inst.Y = (chip8->inst.opcode << 4) & 0x000F; // Y register 
+
+
+    
+
+    switch((chip8->inst.opcode & 0xF000) >> 12){ //Masks opcode so we only get 0xA000 where 000 is the NNN instruction taken from RAM initally via PC
+        case 0x0:{
+            switch(chip8->inst.NN){
+                case 0x0E0:{memset(chip8->display, 0, sizeof(chip8->display)); break;} //Clear display
+                case 0x00EE:{chip8->pc = chip8->stack[chip8->stkptr]; chip8->stkptr--; break;}
+            }
+        }
+        
+        
+        case 0x00E0:{memset(&chip8->display[0], false, sizeof chip8->display);break;}
+        case(0x1): {break;}
+    }
 }
 
 int main(int argc, char *argv[]){
