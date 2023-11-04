@@ -1,0 +1,3 @@
+- To get started with this Interpreter, run this directory within a command line prompt and type make. 
+- If you do not have the gcc compiler, either install on a UNIX based system or install MSYS64 for windows and install the MINGW64 package.
+- To run the Interpreter type ./chip8 in the directory you have compiled in and pass the location of the chip 8 file you wish to run as the first command line arg.
