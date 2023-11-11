@@ -6,7 +6,10 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <windows.h>
-#include <assert.h>
+
+
+
+
 
 
 
@@ -23,7 +26,9 @@ typedef struct {
 typedef struct {
     uint32_t bg_colour;
     uint32_t fg_colour;
-
+    int res_x;
+    int res_y;
+    const char *rom_name;
 } config_type;
 
 
@@ -63,7 +68,7 @@ typedef struct{
 
 
 //Initialiser for sdl object 
-int init_sdl(sdl_type *sdl){
+int init_sdl(sdl_type *sdl, config_type *config){
     if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_AUDIO) != 0){
         SDL_Log("SDL couldn't Initialise %s\n", SDL_GetError());
         return 0; // Returns 0 to show that SDL wasn't initalised
@@ -73,8 +78,8 @@ int init_sdl(sdl_type *sdl){
         "CHIP-8 Emulator",
         SDL_WINDOWPOS_CENTERED,
         SDL_WINDOWPOS_CENTERED,
-        640,
-        480,
+        config->res_x,
+        config->res_y,
         SDL_WINDOW_OPENGL  
     ); //Creates Window using our pointer with said Parameters 
 
@@ -89,6 +94,14 @@ int init_sdl(sdl_type *sdl){
     if(!sdl->renderer){SDL_Log("Could not create Renderer %s\n", SDL_GetError()); return 0;} //If renderer can't initialise throw error
 
     return 1; // Success
+}
+
+void read_in_config(){
+
+}
+
+void fileparser(char *line){
+
 }
 
 
@@ -110,7 +123,7 @@ void set_config(config_type *config){
 
 }
 
-int init_chip8(chip8_type *chip8 , const char rom_name[]){
+int init_chip8(chip8_type *chip8 , const char rom_name[], config_type *config){
     const uint32_t entry = 0x200; //Entry point for roms to be loaded into memory
     const uint8_t font[] = {
         0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
@@ -133,9 +146,11 @@ int init_chip8(chip8_type *chip8 , const char rom_name[]){
 
     //Load Font
     memcpy(chip8->ram, font, sizeof(font));
+
+
     //Open/Load ROM
-    FILE *rom = fopen(rom_name, "rb"); // Set File object to read bytes as the file is raw
-    if(!rom){SDL_Log("ROM file %s is invalid or does not exist\n" ,rom_name); return 0;} //Return error if file cannot be opened
+    FILE *rom = fopen(config->rom_name, "rb"); // Set File object to read bytes as the file is raw
+    if(!rom){SDL_Log("ROM file %s is invalid or does not exist\n" ,config->rom_name); return 0;} //Return error if file cannot be opened
 
     fseek(rom, SEEK_SET, SEEK_END); // Set the cursor of the file from start to end
     const size_t rom_size = ftell(rom); // Using cursor, determines rom size
@@ -150,7 +165,7 @@ int init_chip8(chip8_type *chip8 , const char rom_name[]){
 
     chip8->pc = entry;
     chip8->state = RUNNING;
-    chip8->rom_name = rom_name;
+    chip8->rom_name = config->rom_name;
     
 
     return 1; //Success
@@ -160,10 +175,9 @@ void clear_screen(sdl_type *sdl, const config_type config){
     const uint8_t r  = (uint8_t) (config.bg_colour >> 24); //Convert our background from 32 bit to 8 so each can be read as a seperate rgb value
     const uint8_t g  = (uint8_t) (config.bg_colour >> 16);
     const uint8_t b  = (uint8_t) (config.bg_colour >> 8);
-    const uint8_t a  = (uint8_t) (config.bg_colour >> 0);
 
     //Set Renderer Colour to background
-    SDL_SetRenderDrawColor(sdl->renderer, r,g,b,a);
+    SDL_SetRenderDrawColor(sdl->renderer, r,g,b,(uint8_t)config.bg_colour);
     SDL_RenderClear(sdl->renderer);
 }
 
@@ -260,7 +274,7 @@ void emulate(chip8_type *chip8){
         case 0x0:{
             switch(chip8->inst.NN){
                 case 0x0E0:{memset(chip8->display, 0, sizeof(chip8->display)); break;} //Clear display
-                case 0x00EE:{chip8->pc = chip8->stack[chip8->stkptr]; chip8->stkptr--; break;}
+                case 0x00EE:{chip8->pc = chip8->stack[*(chip8->stkptr)]; chip8->stkptr--; break;}
             }
         }
         
@@ -271,18 +285,18 @@ void emulate(chip8_type *chip8){
 }
 
 int main(int argc, char *argv[]){
-    (void) argc; // Prevents Compiler Error from unused variables 
-    (void) argv;
+    config_type config = {0};
+    if(argc != 1){exit(EXIT_FAILURE);}
+    //read_in_config();
 
     // Intialise SDL 
     sdl_type sdl = {0}; //Create SDL "Object"
-    config_type config = {0};
     chip8_type chip8 = {0}; 
     const char *rom_name = argv[1];
 
-    if(!init_sdl(&sdl)){exit(EXIT_FAILURE);}
+    if(!init_sdl(&sdl, &config)){exit(EXIT_FAILURE);}
     //if(!set_config(&config)){exit(EXIT_FAILURE);}
-    if(!init_chip8(&chip8, rom_name)){exit(EXIT_FAILURE);}
+    if(!init_chip8(&chip8, rom_name, &config)){exit(EXIT_FAILURE);}
 
     clear_screen(&sdl, config);
 
