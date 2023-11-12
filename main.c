@@ -131,8 +131,6 @@ void read_in_config(config_type *config){
         }
 
     fclose(config_f);
-
-
 }
 
 void end(sdl_type *sdl){
@@ -140,16 +138,6 @@ void end(sdl_type *sdl){
     SDL_DestroyWindow(sdl->window); // Destroys the window
     sdl->window = NULL;
     SDL_Quit(); //Shutsdown SDL
-}
-
-
-//Set configuration for emulator (Could be better in a config file YAML,JSON, INI etc.)
-void set_config(config_type *config){
-    *config = (config_type){
-        .fg_colour = 0xFFFFFFFF, // White 
-        .bg_colour = 0x00000000 // Black 
-    };
-
 }
 
 int init_chip8(chip8_type *chip8, config_type *config){
@@ -309,7 +297,18 @@ void emulate(chip8_type *chip8){
         }
         case(0x1):{chip8->pc = chip8->inst.NNN; break;}
         case(0x2):{*chip8->stkptr++ = chip8->pc; chip8->pc = chip8->inst.NNN; break;}
-        case(0x3):{break;}
+        case(0x3):{if(chip8->V[chip8->inst.X] == chip8->inst.NN){chip8->pc += 2;} break;}
+        case(0x4):{if(chip8->V[chip8->inst.X] != chip8->inst.NN){chip8->pc += 2;} break;}
+        case(0x5):{if(chip8->V[chip8->inst.X] == chip8->V[chip8->inst.Y]){chip8->pc += 2;} break;}
+        case(0x6):{chip8->V[chip8->inst.X] = chip8->inst.NN; break;}
+        case(0x7):{chip8->V[chip8->inst.X] += chip8->inst.NN; break;}
+        case(0x8):{
+            switch((chip8->inst.opcode & 0x000F) >> 12){
+                case(0x0):{}
+            }
+        }
+        case(0x9):{if(chip8->V[chip8->inst.X] != chip8->V[chip8->inst.Y]){chip8->pc += 2; break;}}
+
     }
 }
 
