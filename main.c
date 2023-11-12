@@ -6,12 +6,9 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <windows.h>
+#include <string.h>
 
-
-
-
-
-
+void fileparser(char *line , char* key, char* value);
 
 
 //SDL object
@@ -28,7 +25,7 @@ typedef struct {
     uint32_t fg_colour;
     int res_x;
     int res_y;
-    const char *rom_name;
+    char rom_name[50];
 } config_type;
 
 
@@ -96,12 +93,48 @@ int init_sdl(sdl_type *sdl, config_type *config){
     return 1; // Success
 }
 
-void read_in_config(){
+void read_in_config(config_type *config){
+    char line[100]; //Specify Max line Length (Will re assess as dont need to initalise memory that wont be used)
+    FILE *config_f = fopen("config.txt", "r"); 
+
+    if(config_f == NULL){SDL_Log("Config File does not contain anything");}
+
+    char key[50];
+    char value[50];
+
+    while(fgets(line, sizeof(line), config_f)){
+        fileparser(line, key, value);
+        if(strcmp(key, "bg_colour") == 0){config->bg_colour = (uint32_t)strtoul(value, NULL, 0);}
+        else if(strcmp(key, "fg_colour") == 0){config->fg_colour = (uint32_t)strtoul(value, NULL, 0);}
+        else if(strcmp(key, "res_x") == 0){config->res_x = atoi(value);}
+        else if(strcmp(key, "res_y") == 0){config->res_y = atoi(value);}
+        else if(strcmp(key, "rom_name") == 0){strcpy(config->rom_name, value);}
+        else{SDL_Log("Not getting read properly");}
+        }
+
+    fclose(config_f);
+
 
 }
 
-void fileparser(char *line){
+void fileparser(char *line , char* key, char* value){
+   // Make copies of the original strings for modification
+    char key_copy[50];
+    char value_copy[50];
 
+    // Note: strtok modifies the input string, so you might want to create a copy
+    // if you need to preserve the original line.
+    char *token = strtok(line, "=");
+    if (token != NULL) {
+        strcpy(key_copy, token);
+        token = strtok(NULL, "\0");
+        if (token != NULL) {
+            strcpy(value_copy, token);
+            // Trim whitespaces, newline, tab, and return carriage
+            strcpy(key, strtok(key_copy, " \t\n\r"));
+            strcpy(value, strtok(value_copy, " \t\n\r"));
+        }
+    }
 }
 
 
@@ -123,7 +156,7 @@ void set_config(config_type *config){
 
 }
 
-int init_chip8(chip8_type *chip8 , const char rom_name[], config_type *config){
+int init_chip8(chip8_type *chip8, config_type *config){
     const uint32_t entry = 0x200; //Entry point for roms to be loaded into memory
     const uint8_t font[] = {
         0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
@@ -276,6 +309,7 @@ void emulate(chip8_type *chip8){
                 case 0x0E0:{memset(chip8->display, 0, sizeof(chip8->display)); break;} //Clear display
                 case 0x00EE:{chip8->pc = chip8->stack[*(chip8->stkptr)]; chip8->stkptr--; break;}
             }
+            break;
         }
         
         
@@ -285,18 +319,18 @@ void emulate(chip8_type *chip8){
 }
 
 int main(int argc, char *argv[]){
+    (void) argc;
+    (void) argv;
     config_type config = {0};
-    if(argc != 1){exit(EXIT_FAILURE);}
-    //read_in_config();
+    read_in_config(&config);
 
     // Intialise SDL 
     sdl_type sdl = {0}; //Create SDL "Object"
     chip8_type chip8 = {0}; 
-    const char *rom_name = argv[1];
 
     if(!init_sdl(&sdl, &config)){exit(EXIT_FAILURE);}
     //if(!set_config(&config)){exit(EXIT_FAILURE);}
-    if(!init_chip8(&chip8, rom_name, &config)){exit(EXIT_FAILURE);}
+    if(!init_chip8(&chip8, &config)){exit(EXIT_FAILURE);}
 
     clear_screen(&sdl, config);
 
