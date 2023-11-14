@@ -1,5 +1,5 @@
 bg_colour = 0x00000000
 fg_colour = 0xFFFFFFFF
-res_x = 640
-res_y = 480
+res_x = 1525
+res_y = 800
 rom_name = IBMLogo.ch8

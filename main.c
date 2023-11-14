@@ -9,7 +9,18 @@
 #include <string.h>
 
 
-size_t strlcpy(char *dest, const char *src, size_t size);
+
+size_t strlcpy(char *dest, const char *src, size_t size) {
+    size_t i;
+    for (i = 0; i < size - 1 && src[i] != '\0'; ++i) {
+        dest[i] = src[i];
+    }
+    dest[i] = '\0';
+    while (src[i] != '\0') {
+        ++i;
+    }
+    return i;
+}
 
 
 //SDL object
@@ -274,7 +285,7 @@ void user_input(chip8_type *chip8){
 
 
 void emulate(chip8_type *chip8){
-    //bool carry; // Set our carry flag 
+    //bool carry; // Set our carry flag
 
     chip8->inst.opcode = (chip8->ram[chip8->pc] << 8 | chip8->ram[chip8->pc+1]); //Have to or 2 bytes as one opcode is 2 bytes long 
     chip8->pc += 2;
@@ -288,27 +299,65 @@ void emulate(chip8_type *chip8){
 
     
 
-    switch((chip8->inst.opcode & 0xF000) >> 12){ //Masks opcode so we only get 0xA000 where 000 is the NNN instruction taken from RAM initally via PC
+    switch((chip8->inst.opcode & 0xF000) >> 12){ //Masks opcode so we only get 0xA000 where A is our Opcode
         case 0x0:{
             switch(chip8->inst.NN){
                 case 0xE0:{memset(&chip8->display, false, sizeof(chip8->display)); break;} //Clear display
-                case 0xEE:{chip8->pc = *--chip8->stkptr; break;}
+                case 0xEE:{chip8->pc = *--chip8->stkptr; break;} //Pop off current subroutine and set pc to that subroutine
             }
             break;
         }
-        case(0x1):{chip8->pc = chip8->inst.NNN; break;}
+        case(0x1):{chip8->pc = chip8->inst.NNN; break;} // Jump to address NNN
         case(0x2):{*chip8->stkptr++ = chip8->pc; chip8->pc = chip8->inst.NNN; break;}
-        case(0x3):{if(chip8->V[chip8->inst.X] == chip8->inst.NN){chip8->pc += 2;} break;}
-        case(0x4):{if(chip8->V[chip8->inst.X] != chip8->inst.NN){chip8->pc += 2;} break;}
-        case(0x5):{if(chip8->V[chip8->inst.X] == chip8->V[chip8->inst.Y]){chip8->pc += 2;} break;}
-        case(0x6):{chip8->V[chip8->inst.X] = chip8->inst.NN; break;}
-        case(0x7):{chip8->V[chip8->inst.X] += chip8->inst.NN; break;}
+        case(0x3):{if(chip8->V[chip8->inst.X] == chip8->inst.NN){chip8->pc += 2;} break;} //If VX is equal to NN increment PC
+        case(0x4):{if(chip8->V[chip8->inst.X] != chip8->inst.NN){chip8->pc += 2;} break;} //If VX is not equal to NN increment PC
+        case(0x5):{if(chip8->V[chip8->inst.X] == chip8->V[chip8->inst.Y]){chip8->pc += 2;} break;} // If VX == VY increment PC
+        case(0x6):{chip8->V[chip8->inst.X] = chip8->inst.NN; break;} //Set VX = NN
+        case(0x7):{chip8->V[chip8->inst.X] += chip8->inst.NN; break;} // Increment VX by the value NN
         case(0x8):{
-            switch((chip8->inst.opcode & 0x000F) >> 12){
-                case(0x0):{}
+            switch((chip8->inst.opcode & 0x000F) >> 12){ 
+                case(0x0):{chip8->V[chip8->inst.X] = chip8->V[chip8->inst.Y]; break;}
+                case(0x1):{chip8->V[chip8->inst.X] = chip8->V[chip8->inst.X] | chip8->V[chip8->inst.Y]; break;}
+                case(0x2):{chip8->V[chip8->inst.X] = chip8->V[chip8->inst.X] & chip8->V[chip8->inst.Y]; break;}
+                case(0x3):{chip8->V[chip8->inst.X] = chip8->V[chip8->inst.X] ^ chip8->V[chip8->inst.Y]; break;}
+                case(0x4):{
+                    uint16_t result = chip8->V[chip8->inst.X] + chip8->V[chip8->inst.Y];
+                    chip8->V[0xF] = (result > 0xFF) ? 1 : 0;
+                    chip8->V[chip8->inst.X] = (uint8_t)result; 
+                    break;
+                }
+                case(0x5):{
+                    chip8->V[chip8->inst.X] = chip8->V[chip8->inst.X] - chip8->V[chip8->inst.Y];
+                    chip8->V[0xF] = (chip8->V[chip8->inst.X] >= chip8->V[chip8->inst.Y]) ? 1 : 0;
+                    break; 
+                    }
+                case(0x6):{
+                    chip8->V[chip8->inst.X] = chip8->V[chip8->inst.Y];
+                    chip8->V[0xF] = chip8->V[chip8->inst.X] & 0x1;
+                    chip8->V[chip8->inst.X] >>= 1;
+                    break;
+                }
+                case(0x7):{
+                    chip8->V[chip8->inst.X] = chip8->V[chip8->inst.Y] - chip8->V[chip8->inst.X];
+                    chip8->V[0xF] = (chip8->V[chip8->inst.Y] >= chip8->V[chip8->inst.X]) ? 1 : 0;
+                    break;
+                }
+                case(0xE):{
+                    chip8->V[chip8->inst.X] = chip8->V[chip8->inst.Y];
+                    chip8->V[0xF] = chip8->V[chip8->inst.X] & 0x1;
+                    chip8->V[chip8->inst.X] <<= 1;
+                    break;
+                }
+
             }
         }
         case(0x9):{if(chip8->V[chip8->inst.X] != chip8->V[chip8->inst.Y]){chip8->pc += 2; break;}}
+        case(0xA):{chip8->I = chip8->inst.NNN; break;}
+        case(0xB):{
+            if(chip8->inst.X == 0x0){chip8->pc = chip8->inst.NNN + chip8->V[0];} //Case BNNN
+            else{chip8->pc = chip8->inst.NNN + chip8->V[chip8->inst.X];} //Case BXNN    
+            break;
+        }
 
     }
 }
