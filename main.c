@@ -7,6 +7,7 @@
 #include <stdbool.h>
 #include <windows.h>
 #include <string.h>
+#include <time.h>
 
 
 
@@ -30,9 +31,15 @@ typedef struct {
 } sdl_type;
 //Create a struct that holds our pointer to a window (More OOP approach)
 
+typedef enum{
+    COSMAC,
+    AMIGA, 
+}emu_type;
+
 
 //Config Object
 typedef struct {
+    emu_type choice;
     uint32_t bg_colour;
     uint32_t fg_colour;
     int res_x;
@@ -89,7 +96,7 @@ int init_sdl(sdl_type *sdl, config_type *config){
         SDL_WINDOWPOS_CENTERED,
         config->res_x,
         config->res_y,
-        SDL_WINDOW_OPENGL  
+        SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE  
     ); //Creates Window using our pointer with said Parameters 
 
     if(!sdl->window){SDL_Log("Could not create Window %s\n", SDL_GetError()); return 0;} //If window can't open throw error
@@ -113,9 +120,9 @@ void fileparser(char *line , char* key, char* value){
     char *token = strtok(line, "=");
     if (token != NULL) {
         strlcpy(key_copy, token, sizeof(key_copy));
-        token = strtok(NULL, "\0");
+        token = strtok(NULL, "(");
         if (token != NULL) {
-            strncpy(value_copy, token, sizeof(value_copy));
+            strlcpy(value_copy, token, sizeof(value_copy));
             // Trim whitespaces, newline, tab, and return carriage
             strlcpy(key, strtok(key_copy, " \t\n\r"), sizeof(key_copy));
             strlcpy(value, strtok(value_copy, " \t\n\r"), sizeof(value_copy));
@@ -138,7 +145,8 @@ void read_in_config(config_type *config){
         else if(strcmp(key, "fg_colour") == 0){config->fg_colour = (uint32_t)strtoul(value, NULL, 0);}
         else if(strcmp(key, "res_x") == 0){config->res_x = atoi(value);}
         else if(strcmp(key, "res_y") == 0){config->res_y = atoi(value);}
-        else if(strcmp(key, "rom_name") == 0){strcpy(config->rom_name, value);}
+        else if(strcmp(key, "rom_name") == 0){strlcpy(config->rom_name, value, sizeof(value));}
+        else if(strcmp(key, "emulator_type") == 0){config->choice = atoi(value);}
         else{SDL_Log("Not getting read properly");}
         }
 
@@ -200,13 +208,13 @@ int init_chip8(chip8_type *chip8, config_type *config){
     return 1; //Success
 }
 
-void clear_screen(sdl_type *sdl, const config_type config){
-    const uint8_t r  = (uint8_t) (config.bg_colour >> 24); //Convert our background from 32 bit to 8 so each can be read as a seperate rgb value
-    const uint8_t g  = (uint8_t) (config.bg_colour >> 16);
-    const uint8_t b  = (uint8_t) (config.bg_colour >> 8);
+void clear_screen(sdl_type *sdl, config_type *config){
+    const uint8_t r  = (uint8_t) (config->bg_colour >> 24); //Convert our background from 32 bit to 8 so each can be read as a seperate rgb value
+    const uint8_t g  = (uint8_t) (config->bg_colour >> 16);
+    const uint8_t b  = (uint8_t) (config->bg_colour >> 8);
 
     //Set Renderer Colour to background
-    SDL_SetRenderDrawColor(sdl->renderer, r,g,b,(uint8_t)config.bg_colour);
+    SDL_SetRenderDrawColor(sdl->renderer, r,g,b,(uint8_t)config->bg_colour);
     SDL_RenderClear(sdl->renderer);
 }
 
@@ -214,7 +222,7 @@ void update_screen(sdl_type *sdl){
     SDL_RenderPresent(sdl->renderer);
 }
 
-void user_input(chip8_type *chip8){
+void user_input(chip8_type *chip8, sdl_type *sdl, config_type *config){
     SDL_Event event;
 
     while(SDL_PollEvent(&event)){
@@ -276,6 +284,22 @@ void user_input(chip8_type *chip8){
             }
         }
             break;
+        case SDL_WINDOWEVENT:{
+            switch(event.window.event){
+                case SDL_WINDOWEVENT_RESIZED:{
+                    SDL_GetWindowSize(sdl->window, &config->res_x, &config->res_y);
+                    SDL_DestroyRenderer(sdl->renderer);
+                        sdl->renderer = SDL_CreateRenderer(
+                            sdl->window,
+                            -1,
+                            SDL_RENDERER_ACCELERATED
+                        ); //Creates Renderer using our pointer with said Parameters 
+                        clear_screen(sdl, config);
+                    break;
+                }
+            }
+            break;
+        }
             
     }
 }
@@ -284,7 +308,7 @@ void user_input(chip8_type *chip8){
 } 
 
 
-void emulate(chip8_type *chip8){
+void emulate(chip8_type *chip8, config_type* config){
     //bool carry; // Set our carry flag
 
     chip8->inst.opcode = (chip8->ram[chip8->pc] << 8 | chip8->ram[chip8->pc+1]); //Have to or 2 bytes as one opcode is 2 bytes long 
@@ -351,12 +375,40 @@ void emulate(chip8_type *chip8){
 
             }
         }
-        case(0x9):{if(chip8->V[chip8->inst.X] != chip8->V[chip8->inst.Y]){chip8->pc += 2; break;}}
+        break;
+        case(0x9):{if(chip8->V[chip8->inst.X] != chip8->V[chip8->inst.Y]){chip8->pc += 2; }break;}
         case(0xA):{chip8->I = chip8->inst.NNN; break;}
         case(0xB):{
             if(chip8->inst.X == 0x0){chip8->pc = chip8->inst.NNN + chip8->V[0];} //Case BNNN
             else{chip8->pc = chip8->inst.NNN + chip8->V[chip8->inst.X];} //Case BXNN    
             break;
+        }
+        case(0xC):{srand(time(NULL)); uint8_t random = rand(); chip8->V[chip8->inst.X] = random & chip8->inst.NN; break;}
+        case(0xD):{break;}
+        case(0xE):{
+            switch(chip8->inst.NN){
+                case(0x9E):{if(chip8->keypad[chip8->V[chip8->inst.X]]){chip8->pc += 2;} break;}
+                case(0xA1):{if(!chip8->keypad[chip8->V[chip8->inst.X]]){chip8->pc += 2;} break;}
+            }
+        }
+            break;
+        case(0xF):{
+            switch(chip8->inst.NN){
+                case(0x07):{break;}
+                case(0x15):{break;}
+                case(0x18):{break;}
+                case(0x1E):{
+                    switch(config->choice){
+                        case 0:{chip8->I += chip8->V[chip8->inst.X]; break;}
+                        case 1:{
+                            uint32_t result = chip8->I + chip8->V[chip8->inst.X]; 
+                            chip8->V[0xF] = (result > 0xFFF) ? 1 : 0;
+                            chip8->I = (uint16_t)result;
+                            break;
+                        }
+                    }
+                }
+            }
         }
 
     }
@@ -376,10 +428,10 @@ int main(int argc, char *argv[]){
     //if(!set_config(&config)){exit(EXIT_FAILURE);}
     if(!init_chip8(&chip8, &config)){exit(EXIT_FAILURE);}
 
-    clear_screen(&sdl, config);
+    clear_screen(&sdl, &config);
 
     while(chip8.state != QUIT){
-        user_input(&chip8);
+        user_input(&chip8, &sdl, &config);
         if(chip8.state  == PAUSED){continue;}
         //Delay for 60Hz
         /*We need to calculate the time elapsed by instructions running and minus this from the delay 
