@@ -425,7 +425,6 @@ int main(int argc, char *argv[]){
     chip8_type chip8 = {0}; 
 
     if(!init_sdl(&sdl, &config)){exit(EXIT_FAILURE);}
-    //if(!set_config(&config)){exit(EXIT_FAILURE);}
     if(!init_chip8(&chip8, &config)){exit(EXIT_FAILURE);}
 
     clear_screen(&sdl, &config);
