@@ -305,7 +305,12 @@ void user_input(chip8_type *chip8, sdl_type *sdl, config_type *config){
 }
 
 
-} 
+}
+
+int check_keypad(chip8_type *chip8){
+    for(int i = 0; i < 16; i++){if(chip8->keypad){return chip8->keypad[i];}}
+    return 0;
+}
 
 
 void emulate(chip8_type *chip8, config_type* config){
@@ -394,9 +399,15 @@ void emulate(chip8_type *chip8, config_type* config){
             break;
         case(0xF):{
             switch(chip8->inst.NN){
-                case(0x07):{break;}
-                case(0x15):{break;}
-                case(0x18):{break;}
+                case(0x07):{chip8->V[chip8->inst.X] = chip8->delay_timer; break;}
+                case(0x0A):{
+                    int key_value = check_keypad(chip8);
+                    if(key_value == 0){chip8->pc -= 2;} 
+                    chip8->V[chip8->inst.X] = key_value;
+                    break;
+                }
+                case(0x15):{chip8->delay_timer = chip8->V[chip8->inst.X]; break;}
+                case(0x18):{chip8->sound_timer = chip8->V[chip8->inst.X]; break;}
                 case(0x1E):{
                     switch(config->choice){
                         case 0:{chip8->I += chip8->V[chip8->inst.X]; break;}
@@ -432,6 +443,14 @@ int main(int argc, char *argv[]){
     while(chip8.state != QUIT){
         user_input(&chip8, &sdl, &config);
         if(chip8.state  == PAUSED){continue;}
+        clock_t start, end;
+        double time;
+        start = clock();
+        emulate(&chip8, &config);
+        end = clock;
+        time = ((double) (end - start)) / CLOCKS_PER_SEC;
+        
+
         //Delay for 60Hz
         /*We need to calculate the time elapsed by instructions running and minus this from the delay 
         so the chip clocks at 60Hz still 
@@ -439,7 +458,7 @@ int main(int argc, char *argv[]){
         so SDL_Delay should be SDL_Delay(16 - elapsed time);
         */
 
-        SDL_Delay(16);
+        SDL_Delay(16 - time);
         update_screen(&sdl);
         
 
