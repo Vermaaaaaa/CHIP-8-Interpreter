@@ -141,13 +141,13 @@ void read_in_config(config_type *config){
 
     while(fgets(line, sizeof(line), config_f)){
         fileparser(line, key, value);
-        if(strcmp(key, "bg_colour") == 0){config->bg_colour = (uint32_t)strtoul(value, NULL, 0);}
-        else if(strcmp(key, "fg_colour") == 0){config->fg_colour = (uint32_t)strtoul(value, NULL, 0);}
-        else if(strcmp(key, "res_x") == 0){config->res_x = atoi(value);}
-        else if(strcmp(key, "res_y") == 0){config->res_y = atoi(value);}
-        else if(strcmp(key, "rom_name") == 0){strlcpy(config->rom_name, value, sizeof(value));}
-        else if(strcmp(key, "emulator_type") == 0){config->choice = atoi(value);}
-        else{SDL_Log("Not getting read properly");}
+        if(!strncmp(key, "bg_colour", 9)){config->bg_colour = (uint32_t)strtoul(value, NULL, 0);}
+        else if(!strncmp(key, "fg_colour", 9)){config->fg_colour = (uint32_t)strtoul(value, NULL, 0);}
+        else if(!strncmp(key, "res_x", 5)){config->res_x = atoi(value);}
+        else if(!strncmp(key, "res_y", 5)){config->res_y = atoi(value);}
+        else if(!strncmp(key, "rom_name", 8)){strlcpy(config->rom_name, value, sizeof(value));}
+        else if(!strncmp(key, "emulator_type", 14)){config->choice = atoi(value);}
+        else{SDL_Log("Please Check comfig and readme files for correct configurations");}
         }
 
     fclose(config_f);
@@ -308,12 +308,12 @@ void user_input(chip8_type *chip8, sdl_type *sdl, config_type *config){
 }
 
 int check_keypad(chip8_type *chip8){
-    for(int i = 0; i < 16; i++){if(chip8->keypad){return chip8->keypad[i];}}
-    return 0;
+    for(int i = 0; i < 16; i++){if(chip8->keypad[i]){return i;}}
+    return -1;
 }
 
 
-void emulate(chip8_type *chip8, config_type* config){
+void emulate(chip8_type *chip8, config_type *config, sdl_type *sdl){
     //bool carry; // Set our carry flag
 
     chip8->inst.opcode = (chip8->ram[chip8->pc] << 8 | chip8->ram[chip8->pc+1]); //Have to or 2 bytes as one opcode is 2 bytes long 
@@ -401,9 +401,13 @@ void emulate(chip8_type *chip8, config_type* config){
             switch(chip8->inst.NN){
                 case(0x07):{chip8->V[chip8->inst.X] = chip8->delay_timer; break;}
                 case(0x0A):{
-                    int key_value = check_keypad(chip8);
-                    if(key_value == 0){chip8->pc -= 2;} 
-                    chip8->V[chip8->inst.X] = key_value;
+                    int key_value = -1;
+                    while(key_value == -1){
+                        user_input(chip8, sdl, config);
+                        key_value = check_keypad(chip8);
+                        if(key_value == -1){continue;}
+                        chip8->V[chip8->inst.X] = key_value;
+                    }
                     break;
                 }
                 case(0x15):{chip8->delay_timer = chip8->V[chip8->inst.X]; break;}
@@ -419,10 +423,41 @@ void emulate(chip8_type *chip8, config_type* config){
                         }
                     }
                 }
+                case(0x29):{chip8->I = chip8->V[chip8->inst.X] * 5; break;}
+                case(0x33):{
+                    uint8_t va = chip8->V[chip8->inst.X];
+                    chip8->ram[chip8->I+2] = va % 10;
+                    va /= 10;
+                    chip8->ram[chip8->I+1] = va;
+                    va /= 10;
+                    chip8->ram[chip8->I] = va;
+                    break;
+                }
+            case(0x55):{
+                switch(config->choice){
+                    case(COSMAC):{for(int i = 0; i <= chip8->inst.X; i++){chip8->ram[chip8->I+i] = chip8->V[i];} chip8->I = chip8->inst.X + 1; break;}
+                    case(AMIGA):{for(int i = 0; i <= chip8->inst.X; i++){chip8->ram[chip8->I+i] = chip8->V[i];} break;}
+                }
+                break;
+            }
+            case(0x65):{
+                switch(config->choice){
+                    case(COSMAC):{for(int i = 0; i <= chip8->inst.X; i++){chip8->V[i] = chip8->ram[chip8->I+i];} chip8->I = chip8->inst.X + 1; break;}
+                    case(AMIGA):{for(int i = 0; i <= chip8->inst.X; i++){chip8->V[i] = chip8->ram[chip8->I+i];} break;}
+                }
+                break;
+            }
             }
         }
 
     }
+}
+
+void update_timers(chip8_type *chip8){
+    if(chip8->delay_timer > 0){chip8->delay_timer--;}
+    if(chip8->sound_timer > 0){chip8->sound_timer--;}
+
+
 }
 
 int main(int argc, char *argv[]){
@@ -443,13 +478,15 @@ int main(int argc, char *argv[]){
     while(chip8.state != QUIT){
         user_input(&chip8, &sdl, &config);
         if(chip8.state  == PAUSED){continue;}
-        clock_t start, end;
+        /*
+         clock_t start, end;
         double time;
         start = clock();
         emulate(&chip8, &config);
         end = clock;
         time = ((double) (end - start)) / CLOCKS_PER_SEC;
-        
+        */
+       
 
         //Delay for 60Hz
         /*We need to calculate the time elapsed by instructions running and minus this from the delay 
@@ -458,7 +495,7 @@ int main(int argc, char *argv[]){
         so SDL_Delay should be SDL_Delay(16 - elapsed time);
         */
 
-        SDL_Delay(16 - time);
+        SDL_Delay(16);
         update_screen(&sdl);
         
 
@@ -480,3 +517,17 @@ int main(int argc, char *argv[]){
 
 
 }
+
+
+/*
+Implement DXYN 
+How to draw to the screen using sdl
+timers
+audio
+
+
+
+Super Chip
+Xo chip 
+
+*/
