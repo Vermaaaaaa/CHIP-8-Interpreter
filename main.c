@@ -45,6 +45,7 @@ typedef struct {
     int res_x;
     int res_y;
     char rom_name[50];
+    int insts_per_sec;
 } config_type;
 
 
@@ -78,7 +79,7 @@ typedef struct{
     uint8_t sound_timer; //60Hz timers in chip 8
     bool keypad[16]; //Check if keypad is in off or on state
     const char *rom_name; // Get a command line dir for rom to load into ram
-    instr_type inst; 
+    instr_type inst;
 } chip8_type;
 
 
@@ -147,6 +148,7 @@ void read_in_config(config_type *config){
         else if(!strncmp(key, "res_y", 5)){config->res_y = atoi(value);}
         else if(!strncmp(key, "rom_name", 8)){strlcpy(config->rom_name, value, sizeof(value));}
         else if(!strncmp(key, "emulator_type", 14)){config->choice = atoi(value);}
+        else if(!strncmp(key, "insts_per_second", 17)){config->insts_per_sec = atoi(value);}
         else{SDL_Log("Please Check comfig and readme files for correct configurations");}
         }
 
@@ -182,7 +184,7 @@ int init_chip8(chip8_type *chip8, config_type *config){
     }; //Fonts used by the CHIP 8
 
     //Load Font
-    memcpy(chip8->ram, font, sizeof(font));
+    memcpy(chip8->ram[0], font, sizeof(font));
 
 
     //Open/Load ROM
@@ -389,7 +391,13 @@ void emulate(chip8_type *chip8, config_type *config, sdl_type *sdl){
             break;
         }
         case(0xC):{srand(time(NULL)); uint8_t random = rand(); chip8->V[chip8->inst.X] = random & chip8->inst.NN; break;}
-        case(0xD):{break;}
+        case(0xD):{
+            uint8_t x_pos = chip8->V[chip8->inst.X];
+            uint8_t y_pos = chip8->V[chip8->inst.Y];
+
+
+            break;
+        }
         case(0xE):{
             switch(chip8->inst.NN){
                 case(0x9E):{if(chip8->keypad[chip8->V[chip8->inst.X]]){chip8->pc += 2;} break;}
@@ -422,6 +430,7 @@ void emulate(chip8_type *chip8, config_type *config, sdl_type *sdl){
                             break;
                         }
                     }
+                    break;
                 }
                 case(0x29):{chip8->I = chip8->V[chip8->inst.X] * 5; break;}
                 case(0x33):{
@@ -447,6 +456,7 @@ void emulate(chip8_type *chip8, config_type *config, sdl_type *sdl){
                 }
                 break;
             }
+            
             }
         }
 
@@ -478,6 +488,12 @@ int main(int argc, char *argv[]){
     while(chip8.state != QUIT){
         user_input(&chip8, &sdl, &config);
         if(chip8.state  == PAUSED){continue;}
+
+        for(int i = 0; i < config.insts_per_sec / 60; i++){
+            emulate(&chip8,&config,&sdl);
+        }
+        update_timers(&chip8);
+
         /*
          clock_t start, end;
         double time;

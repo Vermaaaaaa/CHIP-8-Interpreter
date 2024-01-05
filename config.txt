@@ -4,3 +4,4 @@ res_x = 640 (Screen resolution x)
 res_y = 480 (Screen resolution y)
 rom_name = IBMLogo.ch8 (Rom Name in current Directory)
 emulator_type = 0 (COSMAC = 0, Amiga = 1)
+insts_per_second = 700
