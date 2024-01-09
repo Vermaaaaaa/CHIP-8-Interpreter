@@ -56,8 +56,13 @@ typedef enum{
     PAUSED,
 } emu_state;
 
+typedef union{
+    uint16_t full_op;
+    uint8_t data[2];
+} opcode_t;
+
 typedef struct{
-    uint16_t opcode;
+    opcode_t opcode;
     uint16_t NNN;   //Constants in instruction set, declaring like this would decrease space complexity
     uint8_t NN;     
     uint8_t N;      
@@ -184,7 +189,7 @@ int init_chip8(chip8_type *chip8, config_type *config){
     }; //Fonts used by the CHIP 8
 
     //Load Font
-    memcpy(chip8->ram[0], font, sizeof(font));
+    memcpy(chip8->ram, font, sizeof(font));
 
 
     //Open/Load ROM
@@ -318,19 +323,22 @@ int check_keypad(chip8_type *chip8){
 void emulate(chip8_type *chip8, config_type *config, sdl_type *sdl){
     //bool carry; // Set our carry flag
 
-    chip8->inst.opcode = (chip8->ram[chip8->pc] << 8 | chip8->ram[chip8->pc+1]); //Have to or 2 bytes as one opcode is 2 bytes long 
+    //Have to or 2 bytes as one opcode is 2 bytes long 
+    chip8->inst.opcode.data[0] = chip8->ram[chip8->pc+1];
+    chip8->inst.opcode.data[1] = chip8->ram[chip8->pc];
+
     chip8->pc += 2;
 
-    chip8->inst.NNN = chip8->inst.opcode & 0x0FFF; // Immediate Memory address, we want to mask of the last 3 nibbles
-    chip8->inst.NN = chip8->inst.opcode & 0x00FF; // 8bit immediate number 
-    chip8->inst.N = chip8->inst.opcode & 0x000F; //N nibble 
-    chip8->inst.X = (chip8->inst.opcode >> 8) & 0x000F; // X register 
-    chip8->inst.Y = (chip8->inst.opcode << 4) & 0x000F; // Y register 
+    chip8->inst.NNN = chip8->inst.opcode.full_op & 0x0FFF; // Immediate Memory address, we want to mask of the last 3 nibbles
+    chip8->inst.NN = chip8->inst.opcode.full_op & 0x00FF; // 8bit immediate number 
+    chip8->inst.N = chip8->inst.opcode.full_op & 0x000F; //N nibble 
+    chip8->inst.X = (chip8->inst.opcode.full_op >> 8) & 0x000F; // X register 
+    chip8->inst.Y = (chip8->inst.opcode.full_op << 4) & 0x000F; // Y register 
 
 
     
 
-    switch((chip8->inst.opcode & 0xF000) >> 12){ //Masks opcode so we only get 0xA000 where A is our Opcode
+    switch((chip8->inst.opcode.full_op & 0xF000) >> 12){ //Masks opcode so we only get 0xA000 where A is our Opcode
         case 0x0:{
             switch(chip8->inst.NN){
                 case 0xE0:{memset(&chip8->display, false, sizeof(chip8->display)); break;} //Clear display
@@ -346,7 +354,7 @@ void emulate(chip8_type *chip8, config_type *config, sdl_type *sdl){
         case(0x6):{chip8->V[chip8->inst.X] = chip8->inst.NN; break;} //Set VX = NN
         case(0x7):{chip8->V[chip8->inst.X] += chip8->inst.NN; break;} // Increment VX by the value NN
         case(0x8):{
-            switch((chip8->inst.opcode & 0x000F) >> 12){ 
+            switch((chip8->inst.opcode.full_op & 0x000F) >> 12){ 
                 case(0x0):{chip8->V[chip8->inst.X] = chip8->V[chip8->inst.Y]; break;}
                 case(0x1):{chip8->V[chip8->inst.X] = chip8->V[chip8->inst.X] | chip8->V[chip8->inst.Y]; break;}
                 case(0x2):{chip8->V[chip8->inst.X] = chip8->V[chip8->inst.X] & chip8->V[chip8->inst.Y]; break;}
@@ -392,10 +400,10 @@ void emulate(chip8_type *chip8, config_type *config, sdl_type *sdl){
         }
         case(0xC):{srand(time(NULL)); uint8_t random = rand(); chip8->V[chip8->inst.X] = random & chip8->inst.NN; break;}
         case(0xD):{
+            /*
             uint8_t x_pos = chip8->V[chip8->inst.X];
             uint8_t y_pos = chip8->V[chip8->inst.Y];
-
-
+            */
             break;
         }
         case(0xE):{
@@ -437,7 +445,7 @@ void emulate(chip8_type *chip8, config_type *config, sdl_type *sdl){
                     uint8_t va = chip8->V[chip8->inst.X];
                     chip8->ram[chip8->I+2] = va % 10;
                     va /= 10;
-                    chip8->ram[chip8->I+1] = va;
+                    chip8->ram[chip8->I+1] = va % 10;
                     va /= 10;
                     chip8->ram[chip8->I] = va;
                     break;
@@ -537,6 +545,7 @@ int main(int argc, char *argv[]){
 
 /*
 Implement DXYN 
+FX0A
 How to draw to the screen using sdl
 timers
 audio
