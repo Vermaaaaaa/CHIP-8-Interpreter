@@ -314,9 +314,9 @@ void user_input(chip8_type *chip8, sdl_type *sdl, config_type *config){
 
 }
 
-int check_keypad(chip8_type *chip8){
-    for(int i = 0; i < 16; i++){if(chip8->keypad[i]){return i;}}
-    return -1;
+bool check_keypad(chip8_type *chip8, uint8_t *key_value){
+    for(int i = 0; i < 16 && key_value == 0xFF ; i++){if(chip8->keypad[i]){key_value = chip8->keypad[i]; return true;}}
+    return false;
 }
 
 
@@ -417,13 +417,12 @@ void emulate(chip8_type *chip8, config_type *config, sdl_type *sdl){
             switch(chip8->inst.NN){
                 case(0x07):{chip8->V[chip8->inst.X] = chip8->delay_timer; break;}
                 case(0x0A):{
-                    int key_value = -1;
-                    while(key_value == -1){
-                        user_input(chip8, sdl, config);
-                        key_value = check_keypad(chip8);
-                        if(key_value == -1){continue;}
-                        chip8->V[chip8->inst.X] = key_value;
-                    }
+                    uint8_t key_value = 0xFF;
+                    bool key_pressed = false;
+                    key_pressed = check_keypad(chip8, &key_value);
+
+                    if(!key_pressed){chip8->pc -= 2; break;}
+                    chip8->V[chip8->inst.X] = key_value;
                     break;
                 }
                 case(0x15):{chip8->delay_timer = chip8->V[chip8->inst.X]; break;}
@@ -545,7 +544,6 @@ int main(int argc, char *argv[]){
 
 /*
 Implement DXYN 
-FX0A
 How to draw to the screen using sdl
 timers
 audio
