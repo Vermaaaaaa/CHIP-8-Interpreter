@@ -1,5 +1,4 @@
 #define SDL_MAIN_HANDLED
-
 #include <stdio.h>
 #include "D:\SDL2-2.28.4\include\SDL.h"
 #include <stdlib.h>
@@ -136,11 +135,17 @@ void fileparser(char *line , char* key, char* value){
     }
 }
 
+
+
 void read_in_config(config_type *config){
-    char line[100]; //Specify Max line Length (Will re assess as dont need to initalise memory that wont be used)
+
     FILE *config_f = fopen("config.txt", "r"); 
 
     if(config_f == NULL){SDL_Log("Config File does not contain anything");}
+
+    char line[100];
+    
+
 
     char key[50];
     char value[50];
@@ -154,8 +159,10 @@ void read_in_config(config_type *config){
         else if(!strncmp(key, "rom_name", 8)){strlcpy(config->rom_name, value, sizeof(value));}
         else if(!strncmp(key, "emulator_type", 14)){config->choice = atoi(value);}
         else if(!strncmp(key, "insts_per_second", 17)){config->insts_per_sec = atoi(value);}
-        else{SDL_Log("Please Check comfig and readme files for correct configurations");}
+        else{SDL_Log("Please Check config and readme files for correct configurations");}
         }
+    
+    
 
     fclose(config_f);
 }
@@ -315,12 +322,12 @@ void user_input(chip8_type *chip8, sdl_type *sdl, config_type *config){
 }
 
 bool check_keypad(chip8_type *chip8, uint8_t *key_value){
-    for(int i = 0; i < 16 && key_value == 0xFF ; i++){if(chip8->keypad[i]){key_value = chip8->keypad[i]; return true;}}
+    for(uint8_t i = 0; i < 16 && *key_value == 0xFF ; i++){if(chip8->keypad[i]){*key_value = i; return true;}}
     return false;
 }
 
 
-void emulate(chip8_type *chip8, config_type *config, sdl_type *sdl){
+void emulate(chip8_type *chip8, config_type *config){
     //bool carry; // Set our carry flag
 
     //Have to or 2 bytes as one opcode is 2 bytes long 
@@ -497,7 +504,7 @@ int main(int argc, char *argv[]){
         if(chip8.state  == PAUSED){continue;}
 
         for(int i = 0; i < config.insts_per_sec / 60; i++){
-            emulate(&chip8,&config,&sdl);
+            emulate(&chip8,&config);
         }
         update_timers(&chip8);
 
