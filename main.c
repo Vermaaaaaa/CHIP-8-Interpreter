@@ -1,4 +1,5 @@
 #define SDL_MAIN_HANDLED
+
 #include <stdio.h>
 #include "D:\SDL2-2.28.4\include\SDL.h"
 #include <stdlib.h>
@@ -122,15 +123,20 @@ void fileparser(char *line , char* key, char* value){
     char key_copy[50];
     char value_copy[50];
 
-    char *token = strtok(line, "=");
+    char* line_saveptr = line;
+    char* keyc_saveptr = key_copy;
+    char* valc_saveptr = value_copy;
+
+
+    char *token = strtok_r(line, "=", &line_saveptr);
     if (token != NULL) {
         strlcpy(key_copy, token, sizeof(key_copy));
-        token = strtok(NULL, "(");
+        token = strtok_r(NULL, "(", &line_saveptr);
         if (token != NULL) {
             strlcpy(value_copy, token, sizeof(value_copy));
             // Trim whitespaces, newline, tab, and return carriage
-            strlcpy(key, strtok(key_copy, " \t\n\r"), sizeof(key_copy));
-            strlcpy(value, strtok(value_copy, " \t\n\r"), sizeof(value_copy));
+            strlcpy(key, strtok_r(key_copy, " \t\n\r", &keyc_saveptr), sizeof(key_copy));
+            strlcpy(value, strtok_r(value_copy, " \t\n\r", &valc_saveptr), sizeof(value_copy));
         }
     }
 }
@@ -144,8 +150,6 @@ void read_in_config(config_type *config){
     if(config_f == NULL){SDL_Log("Config File does not contain anything");}
 
     char line[100];
-    
-
 
     char key[50];
     char value[50];
