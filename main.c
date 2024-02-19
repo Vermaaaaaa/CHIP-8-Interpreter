@@ -11,6 +11,7 @@
 
 
 
+
 size_t strlcpy(char *dest, const char *src, size_t size) {
     size_t i;
     for (i = 0; i < size - 1 && src[i] != '\0'; ++i) {
@@ -85,6 +86,7 @@ typedef struct{
     bool keypad[16]; //Check if keypad is in off or on state
     const char *rom_name; // Get a command line dir for rom to load into ram
     instr_type inst;
+    bool draw;
 } chip8_type;
 
 
@@ -100,8 +102,8 @@ int init_sdl(sdl_type *sdl, config_type *config){
         "CHIP-8 Emulator",
         SDL_WINDOWPOS_CENTERED,
         SDL_WINDOWPOS_CENTERED,
-        config->res_x,
-        config->res_y,
+        config->res_x * 20,
+        config->res_y * 20,
         SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE  
     ); //Creates Window using our pointer with said Parameters 
 
@@ -199,6 +201,9 @@ int init_chip8(chip8_type *chip8, config_type *config){
         0xF0, 0x80, 0xF0, 0x80, 0x80  // F
     }; //Fonts used by the CHIP 8
 
+
+    memset(chip8, 0, sizeof(chip8_type));
+
     //Load Font
     memcpy(chip8->ram, font, sizeof(font));
 
@@ -221,24 +226,23 @@ int init_chip8(chip8_type *chip8, config_type *config){
     chip8->pc = entry;
     chip8->state = RUNNING;
     chip8->rom_name = config->rom_name;
-    
+    chip8->stkptr = &chip8->stack[0];
 
     return 1; //Success
 }
 
 void clear_screen(sdl_type *sdl, config_type *config){
-    const uint8_t r  = (uint8_t) (config->bg_colour >> 24); //Convert our background from 32 bit to 8 so each can be read as a seperate rgb value
-    const uint8_t g  = (uint8_t) (config->bg_colour >> 16);
-    const uint8_t b  = (uint8_t) (config->bg_colour >> 8);
+    const uint8_t r  = (config->bg_colour >> 24) & 0xFF; //Convert our background from 32 bit to 8 so each can be read as a seperate rgb value
+    const uint8_t g  = (config->bg_colour >> 16) & 0xFF;
+    const uint8_t b  = (config->bg_colour >> 8) & 0xFF;
+    const uint8_t a  = (config->bg_colour >> 0) & 0xFF;
 
     //Set Renderer Colour to background
-    SDL_SetRenderDrawColor(sdl->renderer, r,g,b,(uint8_t)config->bg_colour);
+    SDL_SetRenderDrawColor(sdl->renderer, r,g,b,a);
     SDL_RenderClear(sdl->renderer);
 }
 
-void update_screen(sdl_type *sdl){
-    SDL_RenderPresent(sdl->renderer);
-}
+
 
 void user_input(chip8_type *chip8, sdl_type *sdl, config_type *config){
     SDL_Event event;
@@ -341,10 +345,11 @@ void emulate(chip8_type *chip8, config_type *config){
     chip8->pc += 2;
 
     chip8->inst.NNN = chip8->inst.opcode.full_op & 0x0FFF; // Immediate Memory address, we want to mask of the last 3 nibbles
-    chip8->inst.NN = chip8->inst.opcode.full_op & 0x00FF; // 8bit immediate number 
-    chip8->inst.N = chip8->inst.opcode.full_op & 0x000F; //N nibble 
-    chip8->inst.X = (chip8->inst.opcode.full_op >> 8) & 0x000F; // X register 
-    chip8->inst.Y = (chip8->inst.opcode.full_op << 4) & 0x000F; // Y register 
+    chip8->inst.NN = chip8->inst.opcode.full_op & 0x0FF; // 8bit immediate number 
+    chip8->inst.N = chip8->inst.opcode.full_op & 0x0F; //N nibble 
+    chip8->inst.X = (chip8->inst.opcode.full_op >> 8) & 0x0F; // X register 
+    chip8->inst.Y = (chip8->inst.opcode.full_op >> 4) & 0x0F; // Y register
+
 
 
     
@@ -352,7 +357,7 @@ void emulate(chip8_type *chip8, config_type *config){
     switch((chip8->inst.opcode.full_op & 0xF000) >> 12){ //Masks opcode so we only get 0xA000 where A is our Opcode
         case 0x0:{
             switch(chip8->inst.NN){
-                case 0xE0:{memset(&chip8->display, false, sizeof(chip8->display)); break;} //Clear display
+                case 0xE0:{memset(&chip8->display[0], false, sizeof(chip8->display)); chip8->draw = true; break;} //Clear display
                 case 0xEE:{chip8->pc = *--chip8->stkptr; break;} //Pop off current subroutine and set pc to that subroutine
             }
             break;
@@ -365,7 +370,7 @@ void emulate(chip8_type *chip8, config_type *config){
         case(0x6):{chip8->V[chip8->inst.X] = chip8->inst.NN; break;} //Set VX = NN
         case(0x7):{chip8->V[chip8->inst.X] += chip8->inst.NN; break;} // Increment VX by the value NN
         case(0x8):{
-            switch((chip8->inst.opcode.full_op & 0x000F) >> 12){ 
+            switch((chip8->inst.opcode.full_op & 0x000F)){
                 case(0x0):{chip8->V[chip8->inst.X] = chip8->V[chip8->inst.Y]; break;}
                 case(0x1):{chip8->V[chip8->inst.X] = chip8->V[chip8->inst.X] | chip8->V[chip8->inst.Y]; break;}
                 case(0x2):{chip8->V[chip8->inst.X] = chip8->V[chip8->inst.X] & chip8->V[chip8->inst.Y]; break;}
@@ -377,14 +382,23 @@ void emulate(chip8_type *chip8, config_type *config){
                     break;
                 }
                 case(0x5):{
-                    chip8->V[chip8->inst.X] = chip8->V[chip8->inst.X] - chip8->V[chip8->inst.Y];
+                    chip8->V[chip8->inst.X] -= chip8->V[chip8->inst.Y];
                     chip8->V[0xF] = (chip8->V[chip8->inst.X] >= chip8->V[chip8->inst.Y]) ? 1 : 0;
                     break; 
                     }
                 case(0x6):{
-                    chip8->V[chip8->inst.X] = chip8->V[chip8->inst.Y];
-                    chip8->V[0xF] = chip8->V[chip8->inst.X] & 0x1;
-                    chip8->V[chip8->inst.X] >>= 1;
+                    switch(config->choice){
+                        case(COSMAC):{
+                                chip8->V[0xF] = (chip8->V[chip8->inst.Y] & 0x1);
+                                chip8->V[chip8->inst.X] = chip8->V[chip8->inst.Y] >> 1;
+                                break;
+                        }
+                        case(AMIGA):{
+                                chip8->V[0xF] = (chip8->V[chip8->inst.X] & 0x1);
+                                chip8->V[chip8->inst.X] >>= 1;
+                                break;
+                        }
+                    }
                     break;
                 }
                 case(0x7):{
@@ -393,9 +407,19 @@ void emulate(chip8_type *chip8, config_type *config){
                     break;
                 }
                 case(0xE):{
-                    chip8->V[chip8->inst.X] = chip8->V[chip8->inst.Y];
-                    chip8->V[0xF] = chip8->V[chip8->inst.X] & 0x1;
-                    chip8->V[chip8->inst.X] <<= 1;
+                    switch(config->choice){
+                            case(COSMAC):{
+                                chip8->V[0xF] = (chip8->V[chip8->inst.Y] & 0x80) >> 7;
+                                chip8->V[chip8->inst.X] = chip8->V[chip8->inst.Y] << 1;
+                                break;
+                        }
+                        case(AMIGA):{
+                                chip8->V[0xF] = (chip8->V[chip8->inst.X] & 0x80) >> 7;
+                                chip8->V[chip8->inst.X] <<= 1;
+                                break;
+                        }
+
+                    }
                     break;
                 }
 
@@ -405,16 +429,57 @@ void emulate(chip8_type *chip8, config_type *config){
         case(0x9):{if(chip8->V[chip8->inst.X] != chip8->V[chip8->inst.Y]){chip8->pc += 2; }break;}
         case(0xA):{chip8->I = chip8->inst.NNN; break;}
         case(0xB):{
-            if(chip8->inst.X == 0x0){chip8->pc = chip8->inst.NNN + chip8->V[0];} //Case BNNN
-            else{chip8->pc = chip8->inst.NNN + chip8->V[chip8->inst.X];} //Case BXNN    
+            switch(config->choice){
+                case(COSMAC):{
+                    chip8->pc = chip8->inst.NNN + chip8->V[0];
+                    break;
+                }
+                case(AMIGA):{
+                    chip8->pc = chip8->inst.NNN + chip8->V[chip8->inst.X];
+                    break;
+                }
+            }   
             break;
         }
         case(0xC):{srand(time(NULL)); uint8_t random = rand(); chip8->V[chip8->inst.X] = random & chip8->inst.NN; break;}
         case(0xD):{
-            /*
-            uint8_t x_pos = chip8->V[chip8->inst.X];
-            uint8_t y_pos = chip8->V[chip8->inst.Y];
-            */
+             // 0xDXYN: Draw N-height sprite at coords X,Y; Read from memory location I;
+            //   Screen pixels are XOR'd with sprite bits, 
+            //   VF (Carry flag) is set if any screen pixels are set off; This is useful
+            //   for collision detection or other reasons.
+            
+            uint8_t X_coord = chip8->V[chip8->inst.X] % 64;
+            uint8_t Y_coord = chip8->V[chip8->inst.Y] % 32;
+            const uint8_t orig_X = X_coord; // Original X value
+
+            chip8->V[0xF] = 0;  // Initialize carry flag to 0   
+
+            // Loop over all N rows of the sprite
+            for (uint8_t i = 0; i < chip8->inst.N; i++) {
+                // Get next byte/row of sprite data
+                const uint8_t sprite_data = chip8->ram[chip8->I + i];
+                X_coord = orig_X;   // Reset X for next row to draw
+
+                for (int8_t j = 7; j >= 0; j--) {
+                    // If sprite pixel/bit is on and display pixel is on, set carry flag
+                    bool *pixel = &chip8->display[Y_coord * 64 + X_coord]; 
+                    const bool sprite_bit = (sprite_data & (1 << j));
+
+                    if (sprite_bit && *pixel) {
+                        chip8->V[0xF] = 1;  
+                    }
+
+                    // XOR display pixel with sprite pixel/bit to set it on or off
+                    *pixel ^= sprite_bit;
+
+                    // Stop drawing this row if hit right edge of screen
+                    if (++X_coord >= 64) break;
+                }
+
+                // Stop drawing entire sprite if hit bottom edge of screen
+                if (++Y_coord >= 32) break;
+            }
+            chip8->draw = true; // Will update screen on next 60hz tick
             break;
         }
         case(0xE):{
@@ -483,8 +548,43 @@ void emulate(chip8_type *chip8, config_type *config){
 
 void update_timers(chip8_type *chip8){
     if(chip8->delay_timer > 0){chip8->delay_timer--;}
-    if(chip8->sound_timer > 0){chip8->sound_timer--;}
+    if(chip8->sound_timer > 0){
+        chip8->sound_timer--;
+        //Need some code to beep here
 
+
+        }
+
+
+
+
+}
+
+void draw(const sdl_type sdl, chip8_type *chip8){
+   SDL_Rect rect = {.x = 0, .y = 0, .w = 20, .h = 20};
+
+
+
+    // Loop through display pixels, draw a rectangle per pixel to the SDL window
+    for (uint32_t i = 0; i < sizeof chip8->display; i++) {
+        // Translate 1D index i value to 2D X/Y coordinates
+        // X = i % window width
+        // Y = i / window width
+        rect.x = (i % 64) * 10;
+        rect.y = (i / 32) * 10;
+
+        if (chip8->display[i]) {
+            // Pixel is on, draw foreground color
+            SDL_SetRenderDrawColor(sdl.renderer, 255, 255, 255, 255);
+            SDL_RenderFillRect(sdl.renderer, &rect);
+        } 
+        else {
+            SDL_SetRenderDrawColor(sdl.renderer, 0, 0, 0, 255);
+            SDL_RenderFillRect(sdl.renderer, &rect);
+        }
+    }
+
+    SDL_RenderPresent(sdl.renderer);
 
 }
 
@@ -507,30 +607,21 @@ int main(int argc, char *argv[]){
         user_input(&chip8, &sdl, &config);
         if(chip8.state  == PAUSED){continue;}
 
+        const uint64_t start_time = SDL_GetPerformanceCounter();
+
         for(int i = 0; i < config.insts_per_sec / 60; i++){
             emulate(&chip8,&config);
         }
+
+        const uint64_t end_time = SDL_GetPerformanceCounter();
+
+        const uint64_t elapsed_time = end_time - start_time * 1000 / SDL_GetPerformanceFrequency();
+
+        SDL_Delay(16.67f - elapsed_time);
+
+        if(chip8.draw){draw(sdl,&chip8); chip8.draw = false;}
         update_timers(&chip8);
-
-        /*
-         clock_t start, end;
-        double time;
-        start = clock();
-        emulate(&chip8, &config);
-        end = clock;
-        time = ((double) (end - start)) / CLOCKS_PER_SEC;
-        */
-       
-
-        //Delay for 60Hz
-        /*We need to calculate the time elapsed by instructions running and minus this from the delay 
-        so the chip clocks at 60Hz still 
-        Use the system clock to measure the time diff
-        so SDL_Delay should be SDL_Delay(16 - elapsed time);
-        */
-
-        SDL_Delay(16);
-        update_screen(&sdl);
+ 
         
 
     }
@@ -554,10 +645,26 @@ int main(int argc, char *argv[]){
 
 
 /*
-Implement DXYN 
-How to draw to the screen using sdl
-timers
+Implement DXYN and drawing
 audio
+
+00E0
+2NNN
+6XNN
+7XNN
+8XY7
+BNNN
+CXNN
+DXYN
+EX9E
+EXA1
+FX07
+FX15
+FX18
+FX1E
+FX0A
+FX29
+
 
 
 

@@ -1,7 +1,7 @@
 bg_colour = 0x00000000 (Set background Colour)
 fg_colour = 0xF0FF0FFF (Set foreground Colour)
-res_x = 640 (Screen resolution x)
-res_y = 480 (Screen resolution y)
+res_x = 64 (Screen resolution x)
+res_y = 32   (Screen resolution y)
 rom_name = IBMLogo.ch8 (Rom Name in current Directory)
-emulator_type = 0 (COSMAC = 0, Amiga = 1)
+emulator_type = 1 (COSMAC = 0, Amiga = 1)
 insts_per_second = 700

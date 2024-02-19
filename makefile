@@ -7,4 +7,4 @@ LDLIBS = -l SDL2
 
 # Target and its dependencies
 all: main.c
-	gcc $(CFLAGS) main.c -o chip8 $(LDFLAGS) $(LDLIBS)
+	gcc $(CFLAGS) test.c -o test $(LDFLAGS) $(LDLIBS)
