@@ -29,6 +29,8 @@ size_t strlcpy(char *dest, const char *src, size_t size) {
 typedef struct {
     SDL_Window *window;
     SDL_Renderer *renderer;
+    SDL_AudioSpec want, have;
+    SDL_AudioDeviceID device;
 } sdl_type;
 //Create a struct that holds our pointer to a window (More OOP approach)
 
@@ -47,6 +49,7 @@ typedef struct {
     int res_y;
     char rom_name[50];
     int insts_per_sec;
+    int sf;
 } config_type;
 
 
@@ -102,8 +105,8 @@ int init_sdl(sdl_type *sdl, config_type *config){
         "CHIP-8 Emulator",
         SDL_WINDOWPOS_CENTERED,
         SDL_WINDOWPOS_CENTERED,
-        config->res_x * 20,
-        config->res_y * 20,
+        config->res_x * config->sf,
+        config->res_y * config->sf,
         SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE  
     ); //Creates Window using our pointer with said Parameters 
 
@@ -116,6 +119,9 @@ int init_sdl(sdl_type *sdl, config_type *config){
     ); //Creates Renderer using our pointer with said Parameters 
 
     if(!sdl->renderer){SDL_Log("Could not create Renderer %s\n", SDL_GetError()); return 0;} //If renderer can't initialise throw error
+
+
+
 
     return 1; // Success
 }
@@ -165,6 +171,7 @@ void read_in_config(config_type *config){
         else if(!strncmp(key, "rom_name", 8)){strlcpy(config->rom_name, value, sizeof(value));}
         else if(!strncmp(key, "emulator_type", 14)){config->choice = atoi(value);}
         else if(!strncmp(key, "insts_per_second", 17)){config->insts_per_sec = atoi(value);}
+        else if(!strncmp(key, "scale_factor", 13)){config->sf = atoi(value);}
         else{SDL_Log("Please Check config and readme files for correct configurations");}
         }
     
@@ -176,7 +183,6 @@ void read_in_config(config_type *config){
 void end(sdl_type *sdl){
     SDL_DestroyRenderer(sdl->renderer); // Destroys the Renderer
     SDL_DestroyWindow(sdl->window); // Destroys the window
-    sdl->window = NULL;
     SDL_Quit(); //Shutsdown SDL
 }
 
@@ -378,7 +384,7 @@ void emulate(chip8_type *chip8, config_type *config){
                 case(0x4):{
                     uint16_t result = chip8->V[chip8->inst.X] + chip8->V[chip8->inst.Y];
                     chip8->V[0xF] = (result > 0xFF) ? 1 : 0;
-                    chip8->V[chip8->inst.X] = (uint8_t)result; 
+                    chip8->V[chip8->inst.X] = (uint8_t)result;
                     break;
                 }
                 case(0x5):{
@@ -548,19 +554,22 @@ void emulate(chip8_type *chip8, config_type *config){
 
 void update_timers(chip8_type *chip8){
     if(chip8->delay_timer > 0){chip8->delay_timer--;}
+
+
     if(chip8->sound_timer > 0){
         chip8->sound_timer--;
-        //Need some code to beep here
-
-
+        //SDL_PauseAudioDevice(,0)
         }
+    //else{
+        //SDL_PauseAudioDevice(,1);
+   // }
 
 
 
 
 }
 
-void draw(const sdl_type sdl, chip8_type *chip8){
+void draw(const sdl_type sdl, chip8_type *chip8, const config_type config){
    SDL_Rect rect = {.x = 0, .y = 0, .w = 20, .h = 20};
 
 
@@ -570,8 +579,8 @@ void draw(const sdl_type sdl, chip8_type *chip8){
         // Translate 1D index i value to 2D X/Y coordinates
         // X = i % window width
         // Y = i / window width
-        rect.x = (i % 64) * 10;
-        rect.y = (i / 32) * 10;
+        rect.x = (i % config.res_x) * config.sf;
+        rect.y = (i / config.res_x) * config.sf;
 
         if (chip8->display[i]) {
             // Pixel is on, draw foreground color
@@ -615,11 +624,11 @@ int main(int argc, char *argv[]){
 
         const uint64_t end_time = SDL_GetPerformanceCounter();
 
-        const uint64_t elapsed_time = end_time - start_time * 1000 / SDL_GetPerformanceFrequency();
+        const double elapsed_time = (double) end_time - start_time * 1000 / SDL_GetPerformanceFrequency();
 
-        SDL_Delay(16.67f - elapsed_time);
+        SDL_Delay(16.67f > elapsed_time ? 16.67f - elapsed_time : 0);
 
-        if(chip8.draw){draw(sdl,&chip8); chip8.draw = false;}
+        if(chip8.draw){draw(sdl,&chip8, config); chip8.draw = false;}
         update_timers(&chip8);
  
         
@@ -645,7 +654,7 @@ int main(int argc, char *argv[]){
 
 
 /*
-Implement DXYN and drawing
+Implement DXYN 
 audio
 
 00E0
@@ -664,7 +673,7 @@ FX18
 FX1E
 FX0A
 FX29
-
+FX65
 
 
 
