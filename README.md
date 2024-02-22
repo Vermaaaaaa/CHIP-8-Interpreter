@@ -20,7 +20,7 @@ Our primary goals include:
   
 2. **Console Development**: Collaborating on the design, implementation, and testing of a dedicated Chip 8 console, exploring low-level circuit design and embedded systems.
 
-3. **Learning and Collaboration**: Facilitating learning and collaboration in areas such as Verilog, FPGA design, embedded development using C and C++, and related disciplines.
+3. **Learning and Collaboration**: Facilitating learning and collaboration in embedded development using C and C++, and related disciplines.
 
 ## How to Contribute
 
@@ -38,7 +38,7 @@ To get started with the Chip 8 Interpreter:
 
 1. Clone this repository to your local machine.
   
-2. Follow the instructions in the README of the interpreter directory to build and run the interpreter on your system.
+2. Run the makefile in any UNIX environment which supports MINGW, if you are not on a UNIX system please consider using the MSYS project https://www.msys2.org/.
 
 ## Contact
 
