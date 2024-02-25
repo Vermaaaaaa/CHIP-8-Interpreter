@@ -42,7 +42,7 @@ To get started with the Chip 8 Interpreter:
 
 ## Contact
 
-For questions, suggestions, or collaborations, feel free to reach out to [your email or preferred contact method].
+For questions, suggestions, or collaborations, feel free to reach out to me via [![LinkedIn](https://img.shields.io/badge/LinkedIn-%230077B5.svg?logo=linkedin&logoColor=white)](https://linkedin.com/in/rahul-verma-a288392b6).
 
 We're excited to have you join us on this journey into the fascinating world of low-level software and hardware development with the Chip 8!
 
