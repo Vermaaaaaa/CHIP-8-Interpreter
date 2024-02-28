@@ -13,6 +13,11 @@
 
 
 N5110 lcd(PC_7, PA_9, PB_10, PB_5, PB_3, PA_10);
+InterruptIn joystick_button(A5);
+DigitalOut user_led(LED1);
+
+volatile int g_button_flag = 0;
+int state = 0;
 
 Timer t;
 
@@ -76,6 +81,8 @@ typedef struct{
     instr_type inst;
     bool draw;
 } chip8_type;
+
+char buffer[14] = {0};
 
 void init_chip8(chip8_type *chip8, const config_type config){
     const uint32_t entry = 0x200; //Entry point for roms to be loaded into memory
@@ -355,10 +362,11 @@ void update_timers(chip8_type *chip8){
 }
 
 void draw(chip8_type *chip8, const config_type config){
+    lcd.clear();
     // Loop through display pixels, draw a rectangle per pixel to the screen
     for (uint32_t i = 0; i < sizeof chip8->display; i++) {
-        const unsigned int x0 = (i % config.res_x) * config.sf_x;
-        const unsigned int y0 = (i / config.res_x) * config.sf_y;
+        const unsigned int x0 = 10 + (i % config.res_x) * config.sf_x;
+        const unsigned int y0 = 8 + (i / config.res_x) * config.sf_y;
         if (chip8->display[i]) {
             // Pixel is on, draw foreground color
             lcd.drawRect(x0, y0, config.sf_x, config.sf_y, config.fg_colour);
@@ -370,21 +378,64 @@ void draw(chip8_type *chip8, const config_type config){
     lcd.refresh();
 }
 
+void end(){
+    lcd.clear();
+   
+    int i = 5;
+    while(i > 0){
+        lcd.clear();
+        lcd.printString("Shutting down", 0, 1);
+        sprintf(buffer, "       %d", i);
+        lcd.printString(buffer, 0, 2);
+        lcd.refresh();
+        ThisThread::sleep_for(1s);
+        i--;
+    }
+
+    lcd.clear();
+    lcd.printString("   Goodbye", 0, 1);
+    lcd.refresh();
+    ThisThread::sleep_for(1s);
+
+    lcd.clear();
+    lcd.turnOff();
+}
+
+
+void isr(){
+    g_button_flag = 1;
+}
+
 
 int main(){
     lcd.init(LPH7366_1);
     lcd.setContrast(0.55);      //set contrast to 55%
     lcd.setBrightness(0.5);     //set brightness to 50% (utilises the PWM)
     lcd.clear();
-    config_type config = {AMIGA, FILL_BLACK, FILL_WHITE, 64, 32, 700, 1, 2, IBM};
+
+    joystick_button.fall(&isr);
+    joystick_button.mode(PullUp);
+    user_led = state;
+
+    config_type config = {AMIGA, FILL_BLACK, FILL_WHITE, 64, 32, 700, 1, 1, IBM};
 
     chip8_type *chip8 = static_cast<chip8_type *>(malloc(sizeof(chip8_type)));
     chip8->stkptr = static_cast<uint16_t *>(malloc(sizeof(uint16_t)));
     chip8->stkptr = nullptr;
-
     init_chip8(chip8, config);
 
+
     while(chip8->state != QUIT){
+        if(g_button_flag){
+            g_button_flag = 0;
+            state = !state; 
+            user_led = state;
+            switch(chip8->state){
+                case(RUNNING):{chip8->state = PAUSED; break;}
+                case(PAUSED):{chip8->state = RUNNING; break;}
+                case(QUIT):{printf("error"); break;}
+            }
+        }
         if(chip8->state  == PAUSED){continue;}
 
         t.start();
@@ -407,10 +458,13 @@ int main(){
             chip8->draw = false;
         }
         update_timers(chip8);
+        
     }
 
     free(chip8);
     free(chip8->stkptr);
+
+    end();
 
     return 0;
 }
@@ -426,14 +480,16 @@ int main(){
 Implement DXYN
 
 Need to make this compatible with the microcontroller:
--Drawing to the screen - testing needed and to put in delays/ test the fact that we have to pass integers and our scale factors are not integers
-may cause distortion in image that will need to be addressed
+
 - Speakers 
 - Inputs
 - A way for the user to select roms 
-- A way for the user to reset the device so they can load a new rom
-- Turn off and on the device
-- Pause/resume Emulator
 - Turn up and down volume 
-- 
+
+- A way for the user to reset the device so they can load a new rom - Interrupt
+- Turn off and on the device - Interrupt
+- Pause/resume Emulator - Interrupt
+- Handled to an extent
+
+- Screen - Either distored image or not use the full screen but centre the 2 images
 */
