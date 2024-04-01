@@ -2,18 +2,24 @@
 #include "N5110.h"
 #include <chrono>
 #include <cstdint>
+#include <cstring>
+#include <memory>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <cmath>
-#include "chip8-logo.h" 
 #include "ibm-logo.h"
+#include "pong.h"
+#include "Joystick.h"
+
 
 
 
 N5110 lcd(PC_7, PA_9, PB_10, PB_5, PB_3, PA_10);
 InterruptIn joystick_button(A5);
+Joystick stick(ARDUINO_UNO_A3, ARDUINO_UNO_A4);
+DigitalIn but(BUTTON1);
 DigitalOut user_led(LED1);
 
 volatile int g_button_flag = 0;
@@ -28,7 +34,7 @@ typedef enum{
 
 typedef enum{
     IBM,
-    TIMENDUS
+    PONG
 }rom;
 
 //Config Object
@@ -82,9 +88,30 @@ typedef struct{
     bool draw;
 } chip8_type;
 
-char buffer[14] = {0};
+typedef enum{
+    MAIN,
+    PAUSE,
+    SETTINGS
+}menu_type;
 
-void init_chip8(chip8_type *chip8, const config_type config){
+char str_buffer[14] = {0};
+
+void main_screen();
+void settings_screen(menu_type menu);
+
+void init_config(config_type *config){
+    config->emu_choice = AMIGA;
+    config->rom_choice = PONG;
+    config->sf_x = 1;
+    config->sf_y = 1;
+    config->res_x = 64;
+    config->res_y = 32;
+    config->bg_colour = FILL_BLACK;
+    config->fg_colour = FILL_WHITE;
+    config->insts_per_sec = 700;
+}
+
+void init_chip8(chip8_type *chip8, const config_type* config){
     const uint32_t entry = 0x200; //Entry point for roms to be loaded into memory
     const uint8_t font[] = {
         0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
@@ -106,9 +133,7 @@ void init_chip8(chip8_type *chip8, const config_type config){
     }; //Fonts used by the CHIP 8
 
 
-
-    uint8_t *timendus_data = static_cast<uint8_t *>(malloc(104*sizeof(uint8_t)));
-    uint8_t *ibm_data = static_cast<uint8_t *>(malloc(84*sizeof(uint8_t)));
+    
 
 
     memset(chip8->ram, 0, sizeof(chip8->ram));
@@ -126,9 +151,9 @@ void init_chip8(chip8_type *chip8, const config_type config){
     memcpy(chip8->ram, font, sizeof(font));
 
     //Load Rom
-    switch(config.rom_choice){
-        case(TIMENDUS):{memcpy(chip8->ram + entry, timendus_data_src, sizeof(timendus_data_src)); break;}
+    switch(config->rom_choice){
         case(IBM):{memcpy(chip8->ram + entry, ibm_data_src, sizeof(ibm_data_src)); break;}
+        case(PONG):{memcpy(chip8->ram + entry, pong_src, sizeof(pong_src)); break;}
     }
     
 
@@ -137,8 +162,7 @@ void init_chip8(chip8_type *chip8, const config_type config){
     chip8->state = RUNNING;
     chip8->stkptr = &chip8->stack[0];
 
-    free(timendus_data);
-    free(ibm_data);
+   
 
      //Success
 }
@@ -361,18 +385,18 @@ void update_timers(chip8_type *chip8){
     if(chip8->sound_timer > 0){chip8->sound_timer--;}
 }
 
-void draw(chip8_type *chip8, const config_type config){
+void draw(chip8_type *chip8, const config_type *config){
     lcd.clear();
     // Loop through display pixels, draw a rectangle per pixel to the screen
     for (uint32_t i = 0; i < sizeof chip8->display; i++) {
-        const unsigned int x0 = 10 + (i % config.res_x) * config.sf_x;
-        const unsigned int y0 = 8 + (i / config.res_x) * config.sf_y;
+        const unsigned int x0 = 10 + (i % config->res_x) * config->sf_x;
+        const unsigned int y0 = 8 + (i / config->res_x) * config->sf_y;
         if (chip8->display[i]) {
             // Pixel is on, draw foreground color
-            lcd.drawRect(x0, y0, config.sf_x, config.sf_y, config.fg_colour);
+            lcd.drawRect(x0, y0, config->sf_x, config->sf_y, config->fg_colour);
         } 
         else {
-            lcd.drawRect(x0, y0, config.sf_x, config.sf_y, config.bg_colour);
+            lcd.drawRect(x0, y0, config->sf_x, config->sf_y, config->bg_colour);
         }
     }
     lcd.refresh();
@@ -385,8 +409,8 @@ void end(){
     while(i > 0){
         lcd.clear();
         lcd.printString("Shutting down", 0, 1);
-        sprintf(buffer, "       %d", i);
-        lcd.printString(buffer, 0, 2);
+        sprintf(str_buffer, "       %d", i);
+        lcd.printString(str_buffer, 0, 2);
         lcd.refresh();
         ThisThread::sleep_for(1s);
         i--;
@@ -406,8 +430,252 @@ void isr(){
     g_button_flag = 1;
 }
 
+void menu_input(int* current_bank, menu_type state){
+        Direction dir = stick.get_direction();
+        switch(state){
+            case(MAIN):{
+                switch(dir){
+                    default:{break;}
+                    case(N):{
+                        switch(*current_bank){
+                            case(2):{*current_bank = 4; break;}
+                            default:{(*current_bank)--; break;}
+                        }
+                        break;
+                    }
+                    case(S):{
+                        switch(*current_bank){
+                            case(4):{(*current_bank) = 2; break;}
+                            default:{(*current_bank)++; break;}
+                        }
+                        break;
+                    }
+
+                }
+                break;
+            }
+            case(PAUSE):{
+                switch(dir){
+                    default:{break;}
+                    case(N):{
+                        switch(*current_bank){
+                            case(2):{(*current_bank) = 5; break;}
+                            default:{(*current_bank)--; break;}
+                        }
+                        break;
+                    }
+                    case(S):{
+                        switch(*current_bank){
+                            case(5):{(*current_bank) = 2; break;}
+                            default:{(*current_bank)++; break;}
+                        }
+                        break;
+                    }
+                }
+                break;
+            }
+            default:{break;}
+        }
+
+}
+
+void pause_menu(){
+    const char pause_l[] = "PAUSED";
+    const char settings_l[] = "Settings";
+    const char main_menu_l[] = "Main Menu";
+    const char rst_l[] = "Reset";
+    const char power_off_l[] = "Power OFF";
+
+    memcpy(str_buffer, pause_l, sizeof(str_buffer));
+    lcd.printString(str_buffer, 24, 0);
+
+    memcpy(str_buffer, settings_l, sizeof(str_buffer));
+    lcd.printString(str_buffer, 18, 2);
+
+    memcpy(str_buffer, main_menu_l, sizeof(str_buffer));
+    lcd.printString(str_buffer, 15, 3);
+
+    memcpy(str_buffer, rst_l, sizeof(str_buffer));
+    lcd.printString(str_buffer, 27, 4);
+
+    memcpy(str_buffer, power_off_l, sizeof(str_buffer));
+    lcd.printString(str_buffer, 15, 5);
+}
+
+void button_input(bool* select){
+    int but_state = but.read();
+    switch(but_state){
+        case(0):{*select = 1; break;}
+        case(1):{*select = 0; break;} //case pressed, forexample settings menu 
+    }
+}
+
+void pause_screen(){
+    printf("In Pause Menu\n");
+    lcd.clear();
+    lcd.printChar('>', 9, 2);
+    pause_menu();
+    lcd.refresh();
+
+
+
+    int current_bank = 2;
+    bool select = 0;
+
+    while(g_button_flag == 0){
+        if(select == true){break;};
+        button_input(&select);
+        menu_input(&current_bank, PAUSE);
+        lcd.clear();
+        pause_menu();
+        lcd.printChar('>', 9, current_bank);
+        lcd.refresh();
+        
+        ThisThread::sleep_for(200ms);
+    }
+
+    
+    switch(select){
+        case(false):{break;}
+        case(true):{
+            switch(current_bank){
+                case(2):{settings_screen(PAUSE); break;}
+                default:{break;}
+            }
+
+        }
+    }
+
+
+    lcd.clear();
+}
+
+void main_menu(){
+    const char title_l[] = "RAHUL'S C8";
+    const char start_l[] = "START";
+    const char settings_l[] = "Settings";
+    const char power_off_l[] = "Power OFF";
+
+    memcpy(str_buffer, title_l, sizeof(str_buffer));
+    lcd.printString(str_buffer, 12, 0);
+
+    memcpy(str_buffer, start_l, sizeof(str_buffer));
+    lcd.printString(str_buffer, 27, 2);
+
+    memcpy(str_buffer, settings_l, sizeof(str_buffer));
+    lcd.printString(str_buffer, 18, 3);
+
+    memcpy(str_buffer, power_off_l, sizeof(str_buffer));
+    lcd.printString(str_buffer, 15, 4);
+
+}
+
+void settings_menu(){
+    const char title_l[] = "SETTINGS";
+    const char screen_l[] = "Screen";
+    const char audio_l[] = "Audio";
+    const char emulation_l[] = "Emulation";
+    const char back_l[] = "BACK";
+
+    memcpy(str_buffer, title_l, sizeof(str_buffer));
+    lcd.printString(str_buffer, 18, 0);
+
+    memcpy(str_buffer, screen_l, sizeof(str_buffer));
+    lcd.printString(str_buffer, 24, 2);
+
+    memcpy(str_buffer, audio_l, sizeof(str_buffer));
+    lcd.printString(str_buffer, 27, 3);
+
+    memcpy(str_buffer, emulation_l, sizeof(str_buffer));
+    lcd.printString(str_buffer, 15, 4);
+
+    memcpy(str_buffer, back_l, sizeof(str_buffer));
+    lcd.printString(str_buffer, 30, 5);
+
+}
+
+
+void settings_screen(menu_type menu){
+    printf("In Settings Menu\n");
+    printf("Menu type passed: %s \n", menu ? "PAUSE" : "MAIN");
+    lcd.clear();
+    lcd.printChar('>', 9, 2);
+    settings_menu();
+    lcd.refresh();
+
+    int current_bank = 2;
+    bool select = false;
+
+    while(!select){
+        menu_input(&current_bank, PAUSE);
+        button_input(&select);
+        lcd.clear();
+        settings_menu();
+        lcd.printChar('>', 9, current_bank);
+        lcd.refresh();
+        
+        ThisThread::sleep_for(200ms);
+    }
+
+    printf("Current Bank: %d\n", current_bank);
+    printf("Select: %s\n", select ? "TRUE" : "FALSE" );
+    printf("Menu type after settings while loop: %s \n", menu ? "PAUSE" : "MAIN");
+    
+
+    switch(menu){
+        case(PAUSE):{
+            switch(current_bank){
+                case(5):{pause_screen(); break;}
+                default:{break;}
+            }
+        }
+        case(MAIN):{
+             switch(current_bank){
+                case(5):{main_screen(); break;}
+                default:{break;}
+            }
+        }
+        default:{break;}
+    }
+    
+
+
+}
+
+void main_screen(){
+    printf("In main menu\n");
+    lcd.clear();
+    lcd.printChar('>', 9, 2);
+    main_menu();
+    lcd.refresh();
+
+    int current_bank = 2;
+    bool select = false;
+
+    while(!select){
+        menu_input(&current_bank, MAIN);
+        button_input(&select);
+        lcd.clear();
+        main_menu();
+        lcd.printChar('>', 9, current_bank);
+        lcd.refresh();
+        
+        ThisThread::sleep_for(200ms);
+    }
+
+
+    switch(current_bank){
+        case(3):{settings_screen(MAIN); break;}
+        case(2):{break;}
+    }
+    
+}
+
+
+
 
 int main(){
+    stick.init();
     lcd.init(LPH7366_1);
     lcd.setContrast(0.55);      //set contrast to 55%
     lcd.setBrightness(0.5);     //set brightness to 50% (utilises the PWM)
@@ -417,13 +685,15 @@ int main(){
     joystick_button.mode(PullUp);
     user_led = state;
 
-    config_type config = {AMIGA, FILL_BLACK, FILL_WHITE, 64, 32, 700, 1, 1, IBM};
+    config_type *config = static_cast<config_type *>(malloc(sizeof(config_type)));
+    init_config(config); 
 
     chip8_type *chip8 = static_cast<chip8_type *>(malloc(sizeof(chip8_type)));
     chip8->stkptr = static_cast<uint16_t *>(malloc(sizeof(uint16_t)));
     chip8->stkptr = nullptr;
     init_chip8(chip8, config);
 
+    main_screen();
 
     while(chip8->state != QUIT){
         if(g_button_flag){
@@ -431,38 +701,48 @@ int main(){
             state = !state; 
             user_led = state;
             switch(chip8->state){
-                case(RUNNING):{chip8->state = PAUSED; break;}
-                case(PAUSED):{chip8->state = RUNNING; break;}
+                case(RUNNING):{chip8->state = PAUSED; printf("PAUSED\n"); break;}
+                case(PAUSED):{chip8->draw = true; draw(chip8, config); chip8->state = RUNNING; printf("RUNNING\n"); break;}
                 case(QUIT):{printf("error"); break;}
             }
         }
-        if(chip8->state  == PAUSED){continue;}
+        switch(chip8->state){
+            case(PAUSED):{
+                pause_screen(); 
+                continue;
+            }
+            case(RUNNING):{
+                
+                t.start();
 
-        t.start();
+                for(int i = 0; i < config->insts_per_sec / 60; i++){
+                    emulate(chip8,config);
+                }
 
-        for(int i = 0; i < config.insts_per_sec / 60; i++){
-            emulate(chip8,&config);
+                t.stop();
+
+                const std::chrono::milliseconds elapsed_time = std::chrono::duration_cast<std::chrono::milliseconds>(t.elapsed_time());
+                const std::chrono::milliseconds emu_timing = 17ms;
+
+
+                ThisThread::sleep_for(emu_timing > elapsed_time ? emu_timing - elapsed_time : std::chrono::milliseconds(0));
+
+
+                if(chip8->draw){
+                    draw(chip8, config); 
+                    chip8->draw = false;
+                }
+                update_timers(chip8);
+                break;
+            }
+            case(QUIT):{break;}
         }
-
-        t.stop();
-
-        const std::chrono::milliseconds elapsed_time = std::chrono::duration_cast<std::chrono::milliseconds>(t.elapsed_time());
-        const std::chrono::milliseconds emu_timing = 17ms;
-
-
-        ThisThread::sleep_for(emu_timing > elapsed_time ? emu_timing - elapsed_time : std::chrono::milliseconds(0));
-
-
-        if(chip8->draw){
-            draw(chip8, config); 
-            chip8->draw = false;
-        }
-        update_timers(chip8);
         
     }
 
-    free(chip8);
+    free(config);
     free(chip8->stkptr);
+    free(chip8);
 
     end();
 
@@ -481,15 +761,41 @@ Implement DXYN
 
 Need to make this compatible with the microcontroller:
 
-- Speakers 
+- Speakers
+    - PWM controlled
+    - Play a tone when device is turned on/off
+    - Play a tone for the games running 
+
+
 - Inputs
-- A way for the user to select roms 
-- Turn up and down volume 
+    - Designed button circuit using an LPF and schmitt trigger
+    - Need to hook up to oscilloscope and check waveform produced so the microcontroller can read from the design
+    - Program button functionality - Need to detect button being held down
 
-- A way for the user to reset the device so they can load a new rom - Interrupt
+
+-Create Main menu for Device boot
+    -A way for the user to select roms
+    -Explain how to play game
+
+
+- Create a Pause menu - Interrupt
+    -Pause/resume Emulator - Interrupt for when the emulator is running
+    - A way for the user to reset the device so they can load a new rom - Polling
+    - Turn up and down volume - Polling
+
+
 - Turn off and on the device - Interrupt
-- Pause/resume Emulator - Interrupt
-- Handled to an extent
 
-- Screen - Either distored image or not use the full screen but centre the 2 images
+*/
+
+/*
+- main -> start -> paused -> settings -> paused -> main - should go back into game not main
+
+
+
+
+
+
+
+
 */
