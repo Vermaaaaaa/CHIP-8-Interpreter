@@ -1,17 +1,22 @@
 #include "mbed.h"
-#include "N5110.h"
+#include "N5110/N5110.h"
 #include <chrono>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <memory>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
-#include <cmath>
-#include "ibm-logo.h"
-#include "pong.h"
-#include "Joystick.h"
+#include <cmath> 
+#include "Joystick/Joystick.h"
+#include "Roms/blitz.h"
+#include "Roms/wall.h"
+#include "Roms/si.h"
+#include "Roms/tetris.h"
+#include "Roms/breakout.h"
+#include "Roms/merlin.h"
 
 
 
@@ -27,14 +32,40 @@ int state = 0;
 
 Timer t;
 
+constexpr uint32_t entry = 0x200; //Entry point for roms to be loaded into memory
+
+constexpr uint8_t font[] = {
+        0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
+        0x20, 0x60, 0x20, 0x20, 0x70, // 1
+        0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
+        0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3
+        0x90, 0x90, 0xF0, 0x10, 0x10, // 4
+        0xF0, 0x80, 0xF0, 0x10, 0xF0, // 5
+        0xF0, 0x80, 0xF0, 0x90, 0xF0, // 6
+        0xF0, 0x10, 0x20, 0x40, 0x40, // 7
+        0xF0, 0x90, 0xF0, 0x90, 0xF0, // 8
+        0xF0, 0x90, 0xF0, 0x10, 0xF0, // 9
+        0xF0, 0x90, 0xF0, 0x90, 0x90, // A
+        0xE0, 0x90, 0xE0, 0x90, 0xE0, // B
+        0xF0, 0x80, 0x80, 0x80, 0xF0, // C
+        0xE0, 0x90, 0x90, 0x90, 0xE0, // D
+        0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
+        0xF0, 0x80, 0xF0, 0x80, 0x80  // F
+}; //Fonts used by the CHIP 8
+
+
 typedef enum{
     COSMAC,
     AMIGA, 
 }emu_type;
 
 typedef enum{
-    IBM,
-    PONG
+    BLITZ,
+    BREAKOUT,
+    SI,
+    MERLIN,
+    TETRIS,
+    WALL,
 }rom;
 
 //Config Object
@@ -48,6 +79,11 @@ typedef struct {
     unsigned int sf_x;
     unsigned int sf_y;
     rom rom_choice;
+    float contrast;
+    float brightness;
+    float volume;
+    int freq;
+    int clk_speed;
 } config_type;
 
 //Enum for emulation state
@@ -55,6 +91,7 @@ typedef enum{
     QUIT,
     RUNNING,
     PAUSED,
+    OFF
 } emu_state;
 
 typedef union{
@@ -91,17 +128,24 @@ typedef struct{
 typedef enum{
     MAIN,
     PAUSE,
-    SETTINGS
+    SETTINGS,
+    SCREEN,
+    AUDIO,
+    EMU,
+    GAME
+
 }menu_type;
 
 char str_buffer[14] = {0};
 
-void main_screen();
-void settings_screen(menu_type menu);
+void main_screen(config_type* config, chip8_type *chip8);
+void settings_screen(menu_type menu, config_type *config, chip8_type *chip8);
+void button_input(bool* select);
 
 void init_config(config_type *config){
     config->emu_choice = AMIGA;
-    config->rom_choice = PONG;
+    config->clk_speed = 60;
+    config->rom_choice = BLITZ;
     config->sf_x = 1;
     config->sf_y = 1;
     config->res_x = 64;
@@ -109,33 +153,15 @@ void init_config(config_type *config){
     config->bg_colour = FILL_BLACK;
     config->fg_colour = FILL_WHITE;
     config->insts_per_sec = 700;
+    config->brightness = 0.5f;
+    config->contrast = 0.55f;
+    config->volume = 0.5f;
+    config->freq = 1000;
+
 }
 
 void init_chip8(chip8_type *chip8, const config_type* config){
-    const uint32_t entry = 0x200; //Entry point for roms to be loaded into memory
-    const uint8_t font[] = {
-        0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
-        0x20, 0x60, 0x20, 0x20, 0x70, // 1
-        0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
-        0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3
-        0x90, 0x90, 0xF0, 0x10, 0x10, // 4
-        0xF0, 0x80, 0xF0, 0x10, 0xF0, // 5
-        0xF0, 0x80, 0xF0, 0x90, 0xF0, // 6
-        0xF0, 0x10, 0x20, 0x40, 0x40, // 7
-        0xF0, 0x90, 0xF0, 0x90, 0xF0, // 8
-        0xF0, 0x90, 0xF0, 0x10, 0xF0, // 9
-        0xF0, 0x90, 0xF0, 0x90, 0x90, // A
-        0xE0, 0x90, 0xE0, 0x90, 0xE0, // B
-        0xF0, 0x80, 0x80, 0x80, 0xF0, // C
-        0xE0, 0x90, 0x90, 0x90, 0xE0, // D
-        0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
-        0xF0, 0x80, 0xF0, 0x80, 0x80  // F
-    }; //Fonts used by the CHIP 8
-
-
     
-
-
     memset(chip8->ram, 0, sizeof(chip8->ram));
     memset(chip8->display, 0, sizeof(chip8->display));
     memset(chip8->stack, 0, sizeof(chip8->stack));
@@ -151,20 +177,44 @@ void init_chip8(chip8_type *chip8, const config_type* config){
     memcpy(chip8->ram, font, sizeof(font));
 
     //Load Rom
-    switch(config->rom_choice){
-        case(IBM):{memcpy(chip8->ram + entry, ibm_data_src, sizeof(ibm_data_src)); break;}
-        case(PONG):{memcpy(chip8->ram + entry, pong_src, sizeof(pong_src)); break;}
-    }
-    
 
 
     chip8->pc = entry;
-    chip8->state = RUNNING;
+    chip8->state = QUIT;
     chip8->stkptr = &chip8->stack[0];
 
    
 
      //Success
+}
+
+void reset(chip8_type *chip8){
+
+    memset(chip8->display, 0, sizeof(chip8->display));
+    memset(chip8->stack, 0, sizeof(chip8->stack));
+    memset(chip8->V, 0, sizeof(chip8->V));
+    chip8->I = 0;
+    chip8->pc = 0;
+    chip8->delay_timer = 0;
+    chip8->sound_timer = 0;
+    memset(chip8->keypad, false, sizeof(chip8->keypad));
+    chip8->draw = false;
+    chip8->pc = entry;
+    chip8->state = RUNNING;
+    chip8->stkptr = &chip8->stack[0];
+}
+
+void game_set(config_type *config, chip8_type* chip8){
+    memset(chip8->ram + entry, 0, sizeof(chip8->ram) - entry);
+    switch(config->rom_choice){
+        case(BLITZ):{memcpy(chip8->ram + entry, blitz_data, sizeof(blitz_data)); break;}
+        case(BREAKOUT):{memcpy(chip8->ram + entry, breakout_data, sizeof(breakout_data)); break;}
+        case(WALL):{memcpy(chip8->ram + entry, wall_data, sizeof(wall_data)); break;}
+        case(SI):{memcpy(chip8->ram + entry, si_data, sizeof(si_data)); break;}
+        case(TETRIS):{memcpy(chip8->ram + entry, tetris_data, sizeof(tetris_data)); break;}
+        case(MERLIN):{memcpy(chip8->ram + entry, merlin_data, sizeof(merlin_data)); break;}
+    }
+    chip8->state = RUNNING;
 }
 
 bool check_keypad(chip8_type *chip8, uint8_t *key_value){
@@ -430,7 +480,7 @@ void isr(){
     g_button_flag = 1;
 }
 
-void menu_input(int* current_bank, menu_type state){
+void menu_input(int* current_bank, menu_type state, config_type* config){
         Direction dir = stick.get_direction();
         switch(state){
             case(MAIN):{
@@ -450,7 +500,6 @@ void menu_input(int* current_bank, menu_type state){
                         }
                         break;
                     }
-
                 }
                 break;
             }
@@ -474,44 +523,473 @@ void menu_input(int* current_bank, menu_type state){
                 }
                 break;
             }
-            default:{break;}
+            case(SCREEN):{
+                switch(dir){
+                    default:{break;}
+                    case(N):{
+                        switch(*current_bank){
+                            case(2):{*current_bank = 4; break;}
+                            default:{(*current_bank)--; break;}
+                        }
+                        break;
+                    }
+                    case(S):{
+                        switch(*current_bank){
+                            case(4):{(*current_bank) = 2; break;}
+                            default:{(*current_bank)++; break;}
+                        }
+                        break;
+                    }
+                    case(E):{
+                        switch(*current_bank){
+                            case(2):{
+                                if(config->contrast >= 1.0f){config->contrast = 0.0f; break;}
+                                else{config->contrast = config->contrast + 0.1f; break;}
+                            }
+                            case(3):{
+                                if(config->brightness >= 1.0f){config->brightness = 0.0f; break;}
+                                else{config->brightness = config->brightness + 0.1f; break;}
+                            }
+                            default:{break;}
+                        }
+
+                        break;
+                    }
+                    case(W):{
+                        switch(*current_bank){
+                            case(2):{
+                                if(config->contrast <= 0.0f){config->contrast = 1.0f; break;}
+                                else{config->contrast = config->contrast - 0.1f; break;}
+
+                            }
+                            case(3):{
+                                if(config->brightness <= 0.0f){config->brightness = 1.0f; break;}
+                                else{config->brightness = config->brightness - 0.1f; break;}
+                            }
+                            default:{break;}
+                        }
+                        break;
+                    }
+                }
+                break;
+            }
+            case(AUDIO):{
+                switch(dir){
+                    default:{break;}
+                    case(N):{
+                        switch(*current_bank){
+                            case(2):{(*current_bank) = 4; break;}
+                            default:{(*current_bank)--; break;}
+                        }
+                        break;
+                    }
+                    case(S):{
+                        switch(*current_bank){
+                            case(4):{(*current_bank) = 2; break;}
+                            default:{(*current_bank)++; break;}
+                        }
+                        break;
+                    }
+                    case(E):{
+                        switch(*current_bank){
+                            default:{break;}
+                            case(2):{
+                                if(config->volume >= 1.0f){config->volume = 0.0f; break;}
+                                config->volume = config->volume + 0.1;
+                                break;
+                            }
+                            case(3):{
+                                switch(config->freq){
+                                    case(1000):{config->freq = 0; break;}
+                                    default:{config->freq = config->freq + 100; break;}
+                                }
+                                break;
+                            }
+                        }
+                        break;
+                    }
+                    case(W):{
+                        switch(*current_bank){
+                            default:{break;}
+                            case(2):{
+                                if(config->volume <= 0.0f){config->volume = 1.0f; break;}
+                                else{config->volume = config->volume - 0.1f; break;}
+                            }
+                            case(3):{
+                                switch(config->freq){
+                                    case(0):{config->freq = 1000; break;}
+                                    default:{config->freq = config->freq - 100; break;}
+                                }
+                                break;
+                            }
+                        }
+                        break;
+                    }
+                }
+                break;
+            }
+            case(EMU):{
+                switch(dir){
+                    default:{break;}
+                    case(N):{
+                        switch(*current_bank){
+                            case(2):{(*current_bank) = 4; break;}
+                            default:{(*current_bank)--; break;}
+                        }
+                        break;
+                    }
+                    case(S):{
+                        switch(*current_bank){
+                            case(4):{(*current_bank) = 2; break;}
+                            default:{(*current_bank)++; break;}
+                        }
+                        break;
+                    }
+                    case(E):{
+                        switch(*current_bank){
+                            default:{break;}
+                            case(2):{
+                                switch(config->emu_choice){
+                                    case(COSMAC):{config->emu_choice = AMIGA; break;}
+                                    case(AMIGA):{config->emu_choice = COSMAC; break;}
+                                }
+                                break;
+                            }
+                            case(3):{
+                                switch(config->clk_speed){
+                                    case(300):{config->clk_speed = 10; break;}
+                                    default:{config->clk_speed = config->clk_speed + 10; break;}
+                                }
+                                break;
+                            }
+                        }
+                        break;
+                    }
+                    case(W):{
+                        switch(*current_bank){
+                            default:{break;}
+                            case(2):{
+                                switch(config->emu_choice){
+                                    case(COSMAC):{config->emu_choice = AMIGA; break;}
+                                    case(AMIGA):{config->emu_choice = COSMAC; break;}
+                                }
+                                break;
+                            }
+                            case(3):{
+                                switch(config->clk_speed){
+                                    case(10):{config->clk_speed = 300; break;}
+                                    default:{config->clk_speed = config->clk_speed - 10; break;}
+                                }
+                                break;
+                            }
+                        }
+                        break;
+                    }
+                }
+                break;
+
+            }
+            case(GAME):{
+                switch(dir){
+                    default:{break;}
+                    case(N):{
+                        switch(*current_bank){
+                            case(2):{(*current_bank) = 4; break;}
+                            default:{(*current_bank)--; break;}
+                        }
+                        break;
+                    }
+                    case(S):{
+                        switch(*current_bank){
+                            case(4):{(*current_bank) = 2; break;}
+                            default:{(*current_bank)++; break;}
+                        }
+                        break;
+                    }
+                    case(E):{
+                        switch(*current_bank){
+                            default:{break;}
+                            case(2):{
+                                switch(config->rom_choice){
+                                    case(BLITZ):{config->rom_choice = BREAKOUT; break;}
+                                    case(BREAKOUT):{config->rom_choice = MERLIN; break;}
+                                    case(MERLIN):{config->rom_choice = SI; break;}
+                                    case(SI):{config->rom_choice = TETRIS; break;}
+                                    case(TETRIS):{config->rom_choice = WALL; break;}
+                                    case(WALL):{config->rom_choice = BLITZ; break;}
+                                }
+                                break;
+                            }
+                        }
+                        break;
+                    }
+                    case(W):{
+                        switch(*current_bank){
+                            default:{break;}
+                            case(2):{
+                                switch(config->rom_choice){
+                                    case(WALL):{config->rom_choice = TETRIS; break;}
+                                    case(TETRIS):{config->rom_choice = SI; break;}
+                                    case(SI):{config->rom_choice = MERLIN; break;}
+                                    case(MERLIN):{config->rom_choice = BREAKOUT; break;}
+                                    case(BREAKOUT):{config->rom_choice = BLITZ; break;}
+                                    case(BLITZ):{config->rom_choice = WALL; break;}
+                                }
+                                break;
+                            }
+                        }
+                        break;
+                    }
+
+                    
+                }
+                break;
+            }
         }
+
 
 }
 
 void pause_menu(){
-    const char pause_l[] = "PAUSED";
-    const char settings_l[] = "Settings";
-    const char main_menu_l[] = "Main Menu";
-    const char rst_l[] = "Reset";
-    const char power_off_l[] = "Power OFF";
 
-    memcpy(str_buffer, pause_l, sizeof(str_buffer));
-    lcd.printString(str_buffer, 24, 0);
-
-    memcpy(str_buffer, settings_l, sizeof(str_buffer));
-    lcd.printString(str_buffer, 18, 2);
-
-    memcpy(str_buffer, main_menu_l, sizeof(str_buffer));
-    lcd.printString(str_buffer, 15, 3);
-
-    memcpy(str_buffer, rst_l, sizeof(str_buffer));
-    lcd.printString(str_buffer, 27, 4);
-
-    memcpy(str_buffer, power_off_l, sizeof(str_buffer));
-    lcd.printString(str_buffer, 15, 5);
+    lcd.printString("PAUSED", 24, 0);
+    lcd.printString("Settings", 18, 2);
+    lcd.printString("Main Menu", 15, 3);
+    lcd.printString("Reset", 27, 4);
+    lcd.printString("Power OFF", 15, 5);
 }
 
-void button_input(bool* select){
-    int but_state = but.read();
-    switch(but_state){
-        case(0):{*select = 1; break;}
-        case(1):{*select = 0; break;} //case pressed, forexample settings menu 
+void main_menu(){
+    lcd.printString("RAHUL'S C8", 12, 0);
+    lcd.printString("START", 27, 2);
+    lcd.printString("Settings", 18, 3);
+    lcd.printString("Power OFF", 15, 4);
+}
+
+void game_selection_menu(config_type *config){
+    lcd.printString("GAMES", 27, 0);
+    lcd.printString("GAMES: ", 12, 2);
+    switch(config->rom_choice){
+        default:{break;}
+        case(BLITZ):{lcd.printString("BLITZ", 48, 2); break;}
+        case(SI):{lcd.printString("SI", 48, 2); break;}
+        case(WALL):{lcd.printString("WALL", 48, 2); break;}
+        case(BREAKOUT):{lcd.printString("B'OUT", 48, 2); break;}
+        case(TETRIS):{lcd.printString("TETRIS", 48, 2); break;}
+        case(MERLIN):{lcd.printString("MERLIN", 48, 2); break;}
+    }
+    lcd.printString("HOW TO PLAY", 12, 3);
+    lcd.printString("BACK", 30, 4);
+
+
+}
+
+
+void game_select_screen(config_type *config, chip8_type* chip8){
+    lcd.clear();
+    lcd.printChar('>', 6, 2);
+    game_selection_menu(config);
+    lcd.refresh();
+
+    int current_bank = 2;
+    bool game_select = false;
+    
+
+    while(!game_select){
+        menu_input(&current_bank, GAME, config);
+        button_input(&game_select);
+        lcd.clear();
+        game_selection_menu(config);
+        lcd.printChar('>', 6, current_bank);
+        lcd.refresh();
+        ThisThread::sleep_for(50ms);
+    }
+
+    switch(current_bank){
+        case(2):{game_set(config, chip8); break;}
+        case(3):{/*how();*/ break;}
+        case(4):{main_screen(config, chip8); break;}
+        
+        default:{break;}
     }
 }
 
-void pause_screen(){
-    printf("In Pause Menu\n");
+void settings_menu(){
+
+    lcd.printString("SETTINGS", 18, 0);
+    lcd.printString("Screen", 24, 2);
+    lcd.printString("Audio", 27, 3);
+    lcd.printString("Emulation", 15, 4);
+    lcd.printString("BACK", 30, 5);
+
+}
+
+void screen_menu(config_type* config){
+
+    lcd.printString("SCREEN", 24, 0);
+    lcd.printString("Cst: ", 18, 2);
+    lcd.printString("Brt: ", 18, 3);
+    lcd.printString("BACK", 30, 4);
+
+    sprintf(str_buffer, "%.1f", config->contrast);
+    lcd.printString(str_buffer, 48 , 2);
+    sprintf(str_buffer, "%.1f", config->brightness);
+    lcd.printString(str_buffer, 48, 3);
+
+}
+
+void audio_menu(config_type* config){
+
+    lcd.printString("AUDIO", 32, 0);
+    lcd.printString("Vol: ", 18, 2);
+    lcd.printString("Freq:", 12, 3);
+    lcd.printString("BACK", 30, 4);
+
+    sprintf(str_buffer, "%.1f", config->volume);
+    lcd.printString(str_buffer, 48 , 2);
+
+    sprintf(str_buffer, "%d", config->freq);
+    lcd.printString(str_buffer, 54 , 3);
+
+
+}
+
+void emu_menu(config_type* config){
+
+    lcd.printString("EMULATION", 15, 0);
+    lcd.printString("Type: ", 12, 2);
+    lcd.printString("Clk:", 12, 3);
+    lcd.printString("BACK", 30, 4);
+
+    switch(config->emu_choice){
+        case(COSMAC):{lcd.printString("COSMAC", 48, 2); break;}
+        case(AMIGA):{lcd.printString("AMIGA", 48, 2); break;}
+    }
+
+    sprintf(str_buffer, "%d", config->clk_speed);
+    lcd.printString(str_buffer, 54 , 3);
+
+}
+
+void audio_screen(menu_type menu, config_type *config, chip8_type* chip8){
+    lcd.clear();
+    lcd.printChar('>', 6, 2);
+    audio_menu(config);
+    lcd.refresh();
+
+    int current_bank = 2;
+    bool audio_select = false;
+    
+
+    while(!audio_select){
+        menu_input(&current_bank, AUDIO, config);
+        button_input(&audio_select);
+        if(audio_select == true && current_bank != 4){audio_select = false;}
+        lcd.clear();
+        audio_menu(config);
+        lcd.printChar('>', 6, current_bank);
+        lcd.refresh();
+
+        
+        ThisThread::sleep_for(50ms);
+    }
+
+    switch(current_bank){
+        case(4):{settings_screen(menu, config, chip8); break;}
+        default:{break;}
+    }
+}
+
+void emu_screen(menu_type menu, config_type *config, chip8_type *chip8){
+    lcd.clear();
+    lcd.printChar('>', 6, 2);
+    emu_menu(config);
+    lcd.refresh();
+
+    int current_bank = 2;
+    bool emu_select = false;
+    
+
+    while(!emu_select){
+        menu_input(&current_bank, EMU, config);
+        button_input(&emu_select);
+        if(emu_select == true && current_bank != 4){emu_select = false;}
+        lcd.clear();
+        emu_menu(config);
+        lcd.printChar('>', 6, current_bank);
+        lcd.refresh();
+
+        
+        ThisThread::sleep_for(50ms);
+    }
+
+    switch(current_bank){
+        case(4):{settings_screen(menu, config, chip8); break;}
+        default:{break;}
+    }
+}
+
+
+void screen_set_screen(menu_type menu, config_type *config, chip8_type* chip8){
+    lcd.clear();
+    lcd.printChar('>', 6, 2);
+    screen_menu(config);
+    lcd.refresh();
+
+    int current_bank = 2;
+    bool screen_select = false;
+    
+
+    while(!screen_select){
+        menu_input(&current_bank, SCREEN, config);
+        button_input(&screen_select);
+        if(screen_select == true && current_bank != 4){screen_select = false;}
+        lcd.clear();
+        screen_menu(config);
+        lcd.printChar('>', 6, current_bank);
+        lcd.setContrast(config->contrast);
+        lcd.setBrightness(config->brightness);
+        lcd.refresh();
+
+        
+        ThisThread::sleep_for(50ms);
+    }
+
+    switch(current_bank){
+        case(4):{settings_screen(menu, config, chip8); break;}
+        default:{break;}
+    }
+}
+
+
+void return_main(chip8_type* chip8, config_type* config){
+    memset(chip8->ram + entry, 0, sizeof(chip8->ram) - entry);
+    memset(chip8->display, 0, sizeof(chip8->display));
+    memset(chip8->stack, 0, sizeof(chip8->stack));
+    memset(chip8->V, 0, sizeof(chip8->V));
+    chip8->I = 0;
+    chip8->pc = 0;
+    chip8->delay_timer = 0;
+    chip8->sound_timer = 0;
+    memset(chip8->keypad, false, sizeof(chip8->keypad));
+    chip8->draw = false;
+
+    config->rom_choice = BLITZ;
+    chip8->state = QUIT;
+
+}
+
+
+void button_input(bool* select){
+    int but_state = but.read();
+    ThisThread::sleep_for(200ms);
+    switch(but_state){
+        case(0):{*select = true; break;}
+        case(1):{*select = false; break;} //case pressed, forexample settings menu 
+    }
+}
+
+void pause_screen(config_type* config, chip8_type* chip8){
     lcd.clear();
     lcd.printChar('>', 9, 2);
     pause_menu();
@@ -520,120 +998,80 @@ void pause_screen(){
 
 
     int current_bank = 2;
-    bool select = 0;
+    bool pause_select = false;
 
     while(g_button_flag == 0){
-        if(select == true){break;};
-        button_input(&select);
-        menu_input(&current_bank, PAUSE);
+        menu_input(&current_bank, PAUSE, config);
+        button_input(&pause_select);
+        if(pause_select == true){break;}
         lcd.clear();
         pause_menu();
         lcd.printChar('>', 9, current_bank);
         lcd.refresh();
         
-        ThisThread::sleep_for(200ms);
+        ThisThread::sleep_for(50ms);
     }
 
-    
-    switch(select){
-        case(false):{break;}
-        case(true):{
-            switch(current_bank){
-                case(2):{settings_screen(PAUSE); break;}
+    switch(pause_select){
+            case(true):{
+                switch (current_bank){
+                case(2):{settings_screen(PAUSE, config, chip8); break;}
+                case(3):{return_main(chip8, config); break;}
+                case(4):{reset(chip8); break;}
                 default:{break;}
+                }
+                case(false):{break;}
             }
-
         }
-    }
+
 
 
     lcd.clear();
 }
 
-void main_menu(){
-    const char title_l[] = "RAHUL'S C8";
-    const char start_l[] = "START";
-    const char settings_l[] = "Settings";
-    const char power_off_l[] = "Power OFF";
-
-    memcpy(str_buffer, title_l, sizeof(str_buffer));
-    lcd.printString(str_buffer, 12, 0);
-
-    memcpy(str_buffer, start_l, sizeof(str_buffer));
-    lcd.printString(str_buffer, 27, 2);
-
-    memcpy(str_buffer, settings_l, sizeof(str_buffer));
-    lcd.printString(str_buffer, 18, 3);
-
-    memcpy(str_buffer, power_off_l, sizeof(str_buffer));
-    lcd.printString(str_buffer, 15, 4);
-
-}
-
-void settings_menu(){
-    const char title_l[] = "SETTINGS";
-    const char screen_l[] = "Screen";
-    const char audio_l[] = "Audio";
-    const char emulation_l[] = "Emulation";
-    const char back_l[] = "BACK";
-
-    memcpy(str_buffer, title_l, sizeof(str_buffer));
-    lcd.printString(str_buffer, 18, 0);
-
-    memcpy(str_buffer, screen_l, sizeof(str_buffer));
-    lcd.printString(str_buffer, 24, 2);
-
-    memcpy(str_buffer, audio_l, sizeof(str_buffer));
-    lcd.printString(str_buffer, 27, 3);
-
-    memcpy(str_buffer, emulation_l, sizeof(str_buffer));
-    lcd.printString(str_buffer, 15, 4);
-
-    memcpy(str_buffer, back_l, sizeof(str_buffer));
-    lcd.printString(str_buffer, 30, 5);
-
-}
 
 
-void settings_screen(menu_type menu){
-    printf("In Settings Menu\n");
-    printf("Menu type passed: %s \n", menu ? "PAUSE" : "MAIN");
+void settings_screen(menu_type menu, config_type* config, chip8_type* chip8){
     lcd.clear();
     lcd.printChar('>', 9, 2);
     settings_menu();
     lcd.refresh();
 
     int current_bank = 2;
-    bool select = false;
+    bool settings_select = false;
 
-    while(!select){
-        menu_input(&current_bank, PAUSE);
-        button_input(&select);
+    while(!settings_select){
+        menu_input(&current_bank, PAUSE, config);
+        button_input(&settings_select);
         lcd.clear();
         settings_menu();
         lcd.printChar('>', 9, current_bank);
         lcd.refresh();
         
-        ThisThread::sleep_for(200ms);
+        ThisThread::sleep_for(50ms);
     }
 
-    printf("Current Bank: %d\n", current_bank);
-    printf("Select: %s\n", select ? "TRUE" : "FALSE" );
-    printf("Menu type after settings while loop: %s \n", menu ? "PAUSE" : "MAIN");
-    
 
     switch(menu){
         case(PAUSE):{
             switch(current_bank){
-                case(5):{pause_screen(); break;}
+                case(2):{screen_set_screen(PAUSE, config, chip8); break;}
+                case(3):{audio_screen(PAUSE, config, chip8); break;}
+                case(4):{emu_screen(PAUSE, config, chip8); break;}
+                case(5):{pause_screen(config, chip8); break;}
                 default:{break;}
             }
+            break;
         }
         case(MAIN):{
              switch(current_bank){
-                case(5):{main_screen(); break;}
+                case(2):{screen_set_screen(MAIN, config, chip8); break;}
+                case(3):{audio_screen(MAIN, config, chip8); break;}
+                case(4):{emu_screen(MAIN, config, chip8); break;}
+                case(5):{main_screen(config, chip8); break;}
                 default:{break;}
             }
+            break;
         }
         default:{break;}
     }
@@ -642,31 +1080,30 @@ void settings_screen(menu_type menu){
 
 }
 
-void main_screen(){
-    printf("In main menu\n");
+void main_screen(config_type* config, chip8_type *chip8){
     lcd.clear();
     lcd.printChar('>', 9, 2);
     main_menu();
     lcd.refresh();
 
     int current_bank = 2;
-    bool select = false;
+    bool main_select = false;
 
-    while(!select){
-        menu_input(&current_bank, MAIN);
-        button_input(&select);
+    while(!main_select){
+        menu_input(&current_bank, MAIN, config);
+        button_input(&main_select);
         lcd.clear();
         main_menu();
         lcd.printChar('>', 9, current_bank);
         lcd.refresh();
         
-        ThisThread::sleep_for(200ms);
+        ThisThread::sleep_for(50ms);
     }
 
 
     switch(current_bank){
-        case(3):{settings_screen(MAIN); break;}
-        case(2):{break;}
+        case(3):{settings_screen(MAIN, config, chip8); break;}
+        case(2):{game_select_screen(config, chip8); break;}
     }
     
 }
@@ -674,9 +1111,23 @@ void main_screen(){
 
 
 
+
+
 int main(){
     stick.init();
     lcd.init(LPH7366_1);
+    config_type *config = static_cast<config_type *>(malloc(sizeof(config_type)));
+    init_config(config); 
+
+
+    chip8_type *chip8 = static_cast<chip8_type *>(malloc(sizeof(chip8_type)));
+    chip8->stkptr = static_cast<uint16_t *>(malloc(sizeof(uint16_t)));
+    chip8->stkptr = nullptr;
+    init_chip8(chip8, config);
+
+
+
+
     lcd.setContrast(0.55);      //set contrast to 55%
     lcd.setBrightness(0.5);     //set brightness to 50% (utilises the PWM)
     lcd.clear();
@@ -685,45 +1136,46 @@ int main(){
     joystick_button.mode(PullUp);
     user_led = state;
 
-    config_type *config = static_cast<config_type *>(malloc(sizeof(config_type)));
-    init_config(config); 
 
-    chip8_type *chip8 = static_cast<chip8_type *>(malloc(sizeof(chip8_type)));
-    chip8->stkptr = static_cast<uint16_t *>(malloc(sizeof(uint16_t)));
-    chip8->stkptr = nullptr;
-    init_chip8(chip8, config);
 
-    main_screen();
 
-    while(chip8->state != QUIT){
+    
+
+    main_screen(config, chip8);
+    g_button_flag = 0;
+
+    while(chip8->state != OFF){
         if(g_button_flag){
+            ThisThread::sleep_for(200ms);
             g_button_flag = 0;
-            state = !state; 
+            state = !state;
             user_led = state;
             switch(chip8->state){
-                case(RUNNING):{chip8->state = PAUSED; printf("PAUSED\n"); break;}
-                case(PAUSED):{chip8->draw = true; draw(chip8, config); chip8->state = RUNNING; printf("RUNNING\n"); break;}
-                case(QUIT):{printf("error"); break;}
+                case(RUNNING):{chip8->state = PAUSED; break;}
+                case(PAUSED):{chip8->draw = true; draw(chip8, config); chip8->state = RUNNING; break;}
+                case(QUIT):{break;}
             }
         }
+
         switch(chip8->state){
             case(PAUSED):{
-                pause_screen(); 
-                continue;
+                pause_screen(config, chip8); 
+                break;
             }
             case(RUNNING):{
                 
                 t.start();
 
-                for(int i = 0; i < config->insts_per_sec / 60; i++){
+                for(int i = 0; i < config->insts_per_sec / config->clk_speed; i++){
                     emulate(chip8,config);
                 }
 
                 t.stop();
 
                 const std::chrono::milliseconds elapsed_time = std::chrono::duration_cast<std::chrono::milliseconds>(t.elapsed_time());
-                const std::chrono::milliseconds emu_timing = 17ms;
+                const int duration_ms = static_cast<int>(std::ceil(1.0 / config->clk_speed * 1000));
 
+                std::chrono::milliseconds emu_timing(duration_ms);
 
                 ThisThread::sleep_for(emu_timing > elapsed_time ? emu_timing - elapsed_time : std::chrono::milliseconds(0));
 
@@ -735,7 +1187,10 @@ int main(){
                 update_timers(chip8);
                 break;
             }
-            case(QUIT):{break;}
+            case(QUIT):{
+                main_screen(config, chip8);
+                break;
+            }
         }
         
     }
@@ -759,7 +1214,6 @@ int main(){
 /*
 Implement DXYN
 
-Need to make this compatible with the microcontroller:
 
 - Speakers
     - PWM controlled
@@ -774,28 +1228,10 @@ Need to make this compatible with the microcontroller:
 
 
 -Create Main menu for Device boot
-    -A way for the user to select roms
-    -Explain how to play game
-
-
-- Create a Pause menu - Interrupt
-    -Pause/resume Emulator - Interrupt for when the emulator is running
-    - A way for the user to reset the device so they can load a new rom - Polling
-    - Turn up and down volume - Polling
+    -Explain how to play game/ How to play
 
 
 - Turn off and on the device - Interrupt
 
 */
 
-/*
-- main -> start -> paused -> settings -> paused -> main - should go back into game not main
-
-
-
-
-
-
-
-
-*/

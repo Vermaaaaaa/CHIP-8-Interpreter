@@ -624,7 +624,11 @@ int main(int argc, char *argv[]){
 
         const uint64_t end_time = SDL_GetPerformanceCounter();
 
-        const double elapsed_time = (double) end_time - start_time * 1000 / SDL_GetPerformanceFrequency();
+        const double elapsed_time = (double)((end_time - start_time) * 1000) / SDL_GetPerformanceFrequency();
+
+
+
+    
 
         SDL_Delay(16.67f > elapsed_time ? 16.67f - elapsed_time : 0);
 
