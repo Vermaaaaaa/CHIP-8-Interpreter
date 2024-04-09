@@ -132,7 +132,8 @@ typedef enum{
     SCREEN,
     AUDIO,
     EMU,
-    GAME
+    GAME,
+    HOW
 
 }menu_type;
 
@@ -141,6 +142,7 @@ char str_buffer[14] = {0};
 void main_screen(config_type* config, chip8_type *chip8);
 void settings_screen(menu_type menu, config_type *config, chip8_type *chip8);
 void button_input(bool* select);
+void game_select_screen(config_type *config, chip8_type* chip8);
 
 void init_config(config_type *config){
     config->emu_choice = AMIGA;
@@ -784,6 +786,83 @@ void game_selection_menu(config_type *config){
 
 }
 
+void how_menu(config_type *config){
+    switch(config->rom_choice){
+        case(BLITZ):{
+            lcd.printString("Blitz", 27, 0);
+            lcd.printString("Emu Type:  Any", 0, 1);
+            lcd.printString("Controls:5 to ", 0, 2);
+            lcd.printString("start And bomb", 0, 3);
+            lcd.printString(" end on crash ", 0, 4);
+            lcd.printString(">    BACK     ", 0, 5); 
+            break;
+        }
+        case(BREAKOUT):{
+            lcd.printString("   Breakout   ", 0, 0);
+            lcd.printString("Emu Type:  Any",0 , 1);
+            lcd.printString("Controls: 5 to",0 , 2);
+            lcd.printString("start, 4&6 to ",0 , 3);
+            lcd.printString("move, 20 balls",0 , 4);
+            lcd.printString(">    BACK     ", 0, 5);
+            break;
+        }
+        case(MERLIN):{
+            lcd.printString("    Merlin    ", 0, 0);
+            lcd.printString("Emu Type:  Any", 0, 1);
+            lcd.printString("  Controls:  ",0 , 2);
+            lcd.printString("   4 5 7 8   ",0 , 3);
+            lcd.printString("to select tile",0 , 4);
+            lcd.printString(">    BACK     ", 0, 5);
+            break;
+        }
+        case(TETRIS):{
+            lcd.printString("    Tetris    ", 0, 0);
+            lcd.printString("Emu Type:  Any", 0, 1);
+            lcd.printString("Controls: 5&6 ",0 , 2);
+            lcd.printString("left, right 4 ",0 , 3);
+            lcd.printString("  to rotate  ",0 , 4);
+            lcd.printString(">    BACK     ", 0, 5);
+            break;
+        }
+        case(SI):{
+            lcd.printString("Space Invaders", 0, 0);
+            lcd.printString("Emu Type:Amiga", 0, 1);
+            lcd.printString("Controls: 4&6 ",0 , 2);
+            lcd.printString("left, right 5 ",0 , 3);
+            lcd.printString("   to shoot   ",0 , 4);
+            lcd.printString(">    BACK     ", 0, 5);
+            break;
+        }
+        case(WALL):{
+            lcd.printString("     Wall     ", 0, 0);
+            lcd.printString("Emu Type:  Any", 0, 1);
+            lcd.printString("Controls: 1 up",0 , 2);
+            lcd.printString("    2 down    ",0 , 3);
+            lcd.printString(">    BACK     ", 0, 5);
+            break;
+        }
+    }
+}
+
+void how_screen(config_type* config, chip8_type* chip8){
+    lcd.clear();
+    how_menu(config);
+    lcd.refresh();
+
+    int current_bank = 5;
+    bool how_select = false;
+    
+
+    while(!how_select){
+        button_input(&how_select);
+        lcd.clear();
+        how_menu(config);
+        lcd.refresh();
+    }
+
+    game_select_screen(config, chip8);
+}
+
 
 void game_select_screen(config_type *config, chip8_type* chip8){
     lcd.clear();
@@ -805,13 +884,12 @@ void game_select_screen(config_type *config, chip8_type* chip8){
         ThisThread::sleep_for(50ms);
     }
 
-    switch(current_bank){
+     switch(current_bank){
         case(2):{game_set(config, chip8); break;}
-        case(3):{/*how();*/ break;}
+        case(3):{how_screen(config, chip8); break;}
         case(4):{main_screen(config, chip8); break;}
-        
         default:{break;}
-    }
+     }   
 }
 
 void settings_menu(){
@@ -1225,10 +1303,6 @@ Implement DXYN
     - Designed button circuit using an LPF and schmitt trigger
     - Need to hook up to oscilloscope and check waveform produced so the microcontroller can read from the design
     - Program button functionality - Need to detect button being held down
-
-
--Create Main menu for Device boot
-    -Explain how to play game/ How to play
 
 
 - Turn off and on the device - Interrupt
