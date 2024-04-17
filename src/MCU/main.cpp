@@ -17,6 +17,7 @@
 #include "Roms/tetris.h"
 #include "Roms/breakout.h"
 #include "Roms/merlin.h"
+#include "Keypad/keypad.h"
 
 
 
@@ -24,8 +25,10 @@
 N5110 lcd(PC_7, PA_9, PB_10, PB_5, PB_3, PA_10);
 InterruptIn joystick_button(A5);
 Joystick stick(ARDUINO_UNO_A3, ARDUINO_UNO_A4);
+Keypad keypad(ARDUINO_UNO_A5, ARDUINO_UNO_A4, ARDUINO_UNO_A3, ARDUINO_UNO_A2, ARDUINO_UNO_A1, ARDUINO_UNO_A0, ARDUINO_UNO_D2, ARDUINO_UNO_D4);
 DigitalIn but(BUTTON1);
 DigitalOut user_led(LED1);
+PwmOut speaker(PC_8);
 
 volatile int g_button_flag = 0;
 int state = 0;
@@ -430,11 +433,25 @@ void emulate(chip8_type *chip8, config_type *config){
 
     }
 }
+void sound_timer_play(config_type* config){
+    speaker.period(1.0f/config->freq);
+    speaker.write(config->volume);
+}
 
-void update_timers(chip8_type *chip8){
+void sound_timer_stop(){
+    speaker.write(0.0f);
+}
+
+void update_timers(chip8_type *chip8, config_type* config){
     if(chip8->delay_timer > 0){chip8->delay_timer--;}
 
-    if(chip8->sound_timer > 0){chip8->sound_timer--;}
+    if(chip8->sound_timer > 0){
+        chip8->sound_timer--;
+        sound_timer_play(config);
+    }
+    else{
+        sound_timer_stop();
+    }
 }
 
 void draw(chip8_type *chip8, const config_type *config){
@@ -1186,7 +1203,66 @@ void main_screen(config_type* config, chip8_type *chip8){
     
 }
 
+void game_input(chip8_type *chip8){
+    
 
+    inputs pressed_input = keypad.get_key_pressed();
+    
+
+    switch(pressed_input){
+        case(One):{chip8->keypad[0x1] = true; printf("One Pressed\n"); break;}
+        case(Two):{chip8->keypad[0x2] = true; printf("Two Pressed\n"); break;}
+        case(Three):{chip8->keypad[0x3] = true; printf("Three Pressed\n");break;}
+        case(C_key):{chip8->keypad[0xC] = true;printf("C Pressed\n"); break;}
+
+        case(Four):{chip8->keypad[0x4] = true; printf("Four Pressed\n");break;}
+        case(Five):{chip8->keypad[0x5] = true; printf("Five Pressed\n");break;}
+        case(Six):{chip8->keypad[0x6] = true; printf("Six Pressed\n");break;}
+        case(D_key):{chip8->keypad[0xD] = true; printf("D Pressed\n");break;}
+
+        case(Seven):{chip8->keypad[0x7] = true; printf("Seven Pressed\n");break;}
+        case(Eight):{chip8->keypad[0x8] = true; printf("Eight Pressed\n");break;}
+        case(Nine):{chip8->keypad[0x9] = true; printf("Nine Pressed\n");break;}
+        case(E_key):{chip8->keypad[0xE] = true; printf("E Pressed\n");break;}
+
+        case(A_key):{chip8->keypad[0xA] = true; printf("A Pressed\n");break;}
+        case(Zero):{chip8->keypad[0x0] = true; printf("Zero Pressed\n");break;}
+        case(B_key):{chip8->keypad[0xB] = true; printf("B Pressed\n");break;}
+        case(F_key):{chip8->keypad[0xF] = true; printf("F Pressed\n");break;}
+
+        default:{break;}
+    }
+
+    for(int i = 0; i < 4; i++){
+        for(int j = 0; j < 4; j++){
+            inputs released_input = keypad.get_released_key(i, j);
+            switch(released_input){
+                case(One):{chip8->keypad[0x1] = false; break;}
+                case(Two):{chip8->keypad[0x2] = false; break;}
+                case(Three):{chip8->keypad[0x3] = false; break;}
+                case(C_key):{chip8->keypad[0xC] = false; break;}
+
+                case(Four):{chip8->keypad[0x4] = false;  break;}
+                case(Five):{chip8->keypad[0x5] = false; break;}
+                case(Six):{chip8->keypad[0x6] = false; break;}
+                case(D_key):{chip8->keypad[0xD] = false; break;}
+
+                case(Seven):{chip8->keypad[0x7] = false; break;}
+                case(Eight):{chip8->keypad[0x8] = false; break;}
+                case(Nine):{chip8->keypad[0x9] = false; break;}
+                case(E_key):{chip8->keypad[0xE] = false; break;}
+
+                case(A_key):{chip8->keypad[0xA] = false; break;}
+                case(Zero):{chip8->keypad[0x0] = false; break;}
+                case(B_key):{chip8->keypad[0xB] = false; break;}
+                case(F_key):{chip8->keypad[0xF] = false; break;}
+
+                default:{break;}
+
+            }
+        }
+    }
+}
 
 
 
@@ -1241,6 +1317,7 @@ int main(){
                 break;
             }
             case(RUNNING):{
+                game_input(chip8);
                 
                 t.start();
 
@@ -1262,7 +1339,7 @@ int main(){
                     draw(chip8, config); 
                     chip8->draw = false;
                 }
-                update_timers(chip8);
+                update_timers(chip8, config);
                 break;
             }
             case(QUIT):{
@@ -1297,12 +1374,6 @@ Implement DXYN
     - PWM controlled
     - Play a tone when device is turned on/off
     - Play a tone for the games running 
-
-
-- Inputs
-    - Designed button circuit using an LPF and schmitt trigger
-    - Need to hook up to oscilloscope and check waveform produced so the microcontroller can read from the design
-    - Program button functionality - Need to detect button being held down
 
 
 - Turn off and on the device - Interrupt
