@@ -22,10 +22,11 @@
 
 
 
+
 N5110 lcd(PC_7, PA_9, PB_10, PB_5, PB_3, PA_10);
-InterruptIn joystick_button(A5);
-Joystick stick(ARDUINO_UNO_A3, ARDUINO_UNO_A4);
-Keypad keypad(ARDUINO_UNO_A5, ARDUINO_UNO_A4, ARDUINO_UNO_A3, ARDUINO_UNO_A2, ARDUINO_UNO_A1, ARDUINO_UNO_A0, ARDUINO_UNO_D2, ARDUINO_UNO_D4);
+InterruptIn joystick_button(PC_10);
+Joystick stick(PC_3, PC_2);
+Keypad keypad(ARDUINO_UNO_A5, ARDUINO_UNO_A4, ARDUINO_UNO_A3, ARDUINO_UNO_A2, ARDUINO_UNO_A1, ARDUINO_UNO_A0, PH_0, PH_1);
 DigitalIn but(BUTTON1);
 DigitalOut user_led(LED1);
 PwmOut speaker(PC_8);
@@ -779,7 +780,7 @@ void pause_menu(){
 }
 
 void main_menu(){
-    lcd.printString("RAHUL'S C8", 12, 0);
+    lcd.printString("RAHUL'S CHIP-8", 0, 0);
     lcd.printString("START", 27, 2);
     lcd.printString("Settings", 18, 3);
     lcd.printString("Power OFF", 15, 4);
@@ -1210,25 +1211,25 @@ void game_input(chip8_type *chip8){
     
 
     switch(pressed_input){
-        case(One):{chip8->keypad[0x1] = true; printf("One Pressed\n"); break;}
-        case(Two):{chip8->keypad[0x2] = true; printf("Two Pressed\n"); break;}
-        case(Three):{chip8->keypad[0x3] = true; printf("Three Pressed\n");break;}
-        case(C_key):{chip8->keypad[0xC] = true;printf("C Pressed\n"); break;}
+        case(One):{chip8->keypad[0x1] = true; break;}
+        case(Two):{chip8->keypad[0x2] = true; break;}
+        case(Three):{chip8->keypad[0x3] = true; break;}
+        case(C_key):{chip8->keypad[0xC] = true; break;}
 
-        case(Four):{chip8->keypad[0x4] = true; printf("Four Pressed\n");break;}
-        case(Five):{chip8->keypad[0x5] = true; printf("Five Pressed\n");break;}
-        case(Six):{chip8->keypad[0x6] = true; printf("Six Pressed\n");break;}
-        case(D_key):{chip8->keypad[0xD] = true; printf("D Pressed\n");break;}
+        case(Four):{chip8->keypad[0x4] = true; break;}
+        case(Five):{chip8->keypad[0x5] = true; break;}
+        case(Six):{chip8->keypad[0x6] = true; break;}
+        case(D_key):{chip8->keypad[0xD] = true; break;}
 
-        case(Seven):{chip8->keypad[0x7] = true; printf("Seven Pressed\n");break;}
-        case(Eight):{chip8->keypad[0x8] = true; printf("Eight Pressed\n");break;}
-        case(Nine):{chip8->keypad[0x9] = true; printf("Nine Pressed\n");break;}
-        case(E_key):{chip8->keypad[0xE] = true; printf("E Pressed\n");break;}
+        case(Seven):{chip8->keypad[0x7] = true;  break;}
+        case(Eight):{chip8->keypad[0x8] = true; break;}
+        case(Nine):{chip8->keypad[0x9] = true; break;}
+        case(E_key):{chip8->keypad[0xE] = true; break;}
 
-        case(A_key):{chip8->keypad[0xA] = true; printf("A Pressed\n");break;}
-        case(Zero):{chip8->keypad[0x0] = true; printf("Zero Pressed\n");break;}
-        case(B_key):{chip8->keypad[0xB] = true; printf("B Pressed\n");break;}
-        case(F_key):{chip8->keypad[0xF] = true; printf("F Pressed\n");break;}
+        case(A_key):{chip8->keypad[0xA] = true;  break;}
+        case(Zero):{chip8->keypad[0x0] = true; break;}
+        case(B_key):{chip8->keypad[0xB] = true; break;}
+        case(F_key):{chip8->keypad[0xF] = true; break;}
 
         default:{break;}
     }
@@ -1328,7 +1329,7 @@ int main(){
                 t.stop();
 
                 const std::chrono::milliseconds elapsed_time = std::chrono::duration_cast<std::chrono::milliseconds>(t.elapsed_time());
-                const int duration_ms = static_cast<int>(std::ceil(1.0 / config->clk_speed * 1000));
+                const int duration_ms = static_cast<int>(std::ceil(1.0 / (float)config->clk_speed * 1000));
 
                 std::chrono::milliseconds emu_timing(duration_ms);
 
