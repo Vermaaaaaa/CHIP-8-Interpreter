@@ -27,12 +27,14 @@ N5110 lcd(PC_7, PA_9, PB_10, PB_5, PB_3, PA_10);
 InterruptIn joystick_button(PC_10);
 Joystick stick(PC_3, PC_2);
 Keypad keypad(ARDUINO_UNO_A5, ARDUINO_UNO_A4, ARDUINO_UNO_A3, ARDUINO_UNO_A2, ARDUINO_UNO_A1, ARDUINO_UNO_A0, PH_0, PH_1);
-DigitalIn but(BUTTON1);
 DigitalOut user_led(LED1);
+InterruptIn but(BUTTON1);
 PwmOut speaker(PC_8);
 
+volatile int g_joystick_flag = 0;
 volatile int g_button_flag = 0;
 int state = 0;
+
 
 Timer t;
 
@@ -497,6 +499,10 @@ void end(){
 
 
 void isr(){
+    g_joystick_flag = 1;
+}
+
+void isr_but(){
     g_button_flag = 1;
 }
 
@@ -872,10 +878,16 @@ void how_screen(config_type* config, chip8_type* chip8){
     
 
     while(!how_select){
-        button_input(&how_select);
+        inputs pressed_input = keypad.get_key_pressed();
+        switch(pressed_input){
+            default:{break;}
+            case(One):{how_select = true; break;}
+            case(Two):{how_select = true; break;}
+        }
         lcd.clear();
         how_menu(config);
         lcd.refresh();
+        ThisThread::sleep_for(150ms);
     }
 
     game_select_screen(config, chip8);
@@ -894,18 +906,24 @@ void game_select_screen(config_type *config, chip8_type* chip8){
 
     while(!game_select){
         menu_input(&current_bank, GAME, config);
-        button_input(&game_select);
+        inputs pressed_input = keypad.get_key_pressed();
+        switch(pressed_input){
+            default:{break;}
+            case(One):{game_select = true; break;}
+            case(Two):{game_select = true; current_bank = 10; break;}
+        }
         lcd.clear();
         game_selection_menu(config);
         lcd.printChar('>', 6, current_bank);
         lcd.refresh();
-        ThisThread::sleep_for(50ms);
+        ThisThread::sleep_for(150ms);
     }
 
      switch(current_bank){
         case(2):{game_set(config, chip8); break;}
         case(3):{how_screen(config, chip8); break;}
         case(4):{main_screen(config, chip8); break;}
+        case(10):{main_screen(config, chip8); break;}
         default:{break;}
      }   
 }
@@ -979,19 +997,25 @@ void audio_screen(menu_type menu, config_type *config, chip8_type* chip8){
 
     while(!audio_select){
         menu_input(&current_bank, AUDIO, config);
-        button_input(&audio_select);
-        if(audio_select == true && current_bank != 4){audio_select = false;}
+        inputs pressed_input = keypad.get_key_pressed();
+        switch(pressed_input){
+            default:{break;}
+            case(One):{audio_select = true; break;}
+            case(Two):{audio_select = true; current_bank = 10; break;}
+        }
+        if(audio_select == true && current_bank < 4){audio_select = false;}
         lcd.clear();
         audio_menu(config);
         lcd.printChar('>', 6, current_bank);
         lcd.refresh();
 
         
-        ThisThread::sleep_for(50ms);
+        ThisThread::sleep_for(150ms);
     }
 
     switch(current_bank){
         case(4):{settings_screen(menu, config, chip8); break;}
+        case(10):{settings_screen(menu, config, chip8); break;}
         default:{break;}
     }
 }
@@ -1008,19 +1032,25 @@ void emu_screen(menu_type menu, config_type *config, chip8_type *chip8){
 
     while(!emu_select){
         menu_input(&current_bank, EMU, config);
-        button_input(&emu_select);
-        if(emu_select == true && current_bank != 4){emu_select = false;}
+        inputs pressed_input = keypad.get_key_pressed();
+        switch(pressed_input){
+            default:{break;}
+            case(One):{emu_select = true; break;}
+            case(Two):{emu_select = true; current_bank = 10; break;}
+        }
+        if(emu_select == true && current_bank < 4){emu_select = false;}
         lcd.clear();
         emu_menu(config);
         lcd.printChar('>', 6, current_bank);
         lcd.refresh();
 
         
-        ThisThread::sleep_for(50ms);
+        ThisThread::sleep_for(150ms);
     }
 
     switch(current_bank){
         case(4):{settings_screen(menu, config, chip8); break;}
+        case(10):{settings_screen(menu, config, chip8); break;}
         default:{break;}
     }
 }
@@ -1038,8 +1068,13 @@ void screen_set_screen(menu_type menu, config_type *config, chip8_type* chip8){
 
     while(!screen_select){
         menu_input(&current_bank, SCREEN, config);
-        button_input(&screen_select);
-        if(screen_select == true && current_bank != 4){screen_select = false;}
+        inputs pressed_input = keypad.get_key_pressed();
+        switch(pressed_input){
+            default:{break;}
+            case(One):{screen_select = true; break;}
+            case(Two):{screen_select = true; current_bank = 10; break;}
+        }
+        if(screen_select == true && current_bank < 4){screen_select = false;}
         lcd.clear();
         screen_menu(config);
         lcd.printChar('>', 6, current_bank);
@@ -1048,11 +1083,12 @@ void screen_set_screen(menu_type menu, config_type *config, chip8_type* chip8){
         lcd.refresh();
 
         
-        ThisThread::sleep_for(50ms);
+        ThisThread::sleep_for(150ms);
     }
 
     switch(current_bank){
         case(4):{settings_screen(menu, config, chip8); break;}
+        case(10):{settings_screen(menu, config, chip8); break;}
         default:{break;}
     }
 }
@@ -1076,14 +1112,6 @@ void return_main(chip8_type* chip8, config_type* config){
 }
 
 
-void button_input(bool* select){
-    int but_state = but.read();
-    ThisThread::sleep_for(200ms);
-    switch(but_state){
-        case(0):{*select = true; break;}
-        case(1):{*select = false; break;} //case pressed, forexample settings menu 
-    }
-}
 
 void pause_screen(config_type* config, chip8_type* chip8){
     lcd.clear();
@@ -1096,16 +1124,20 @@ void pause_screen(config_type* config, chip8_type* chip8){
     int current_bank = 2;
     bool pause_select = false;
 
-    while(g_button_flag == 0){
+    while(g_joystick_flag == 0){
+        inputs pressed_input = keypad.get_key_pressed();
+        switch(pressed_input){
+            default:{break;}
+            case(One):{pause_select = true; break;}
+        }
         menu_input(&current_bank, PAUSE, config);
-        button_input(&pause_select);
         if(pause_select == true){break;}
         lcd.clear();
         pause_menu();
         lcd.printChar('>', 9, current_bank);
         lcd.refresh();
         
-        ThisThread::sleep_for(50ms);
+        ThisThread::sleep_for(150ms);
     }
 
     switch(pause_select){
@@ -1137,14 +1169,19 @@ void settings_screen(menu_type menu, config_type* config, chip8_type* chip8){
     bool settings_select = false;
 
     while(!settings_select){
+        inputs pressed_input = keypad.get_key_pressed();
+        switch(pressed_input){
+            default:{break;}
+            case(One):{settings_select = true; break;}
+            case(Two):{settings_select = true; current_bank = 10; break;}
+        }
         menu_input(&current_bank, PAUSE, config);
-        button_input(&settings_select);
         lcd.clear();
         settings_menu();
         lcd.printChar('>', 9, current_bank);
         lcd.refresh();
         
-        ThisThread::sleep_for(50ms);
+        ThisThread::sleep_for(150ms);
     }
 
 
@@ -1155,6 +1192,7 @@ void settings_screen(menu_type menu, config_type* config, chip8_type* chip8){
                 case(3):{audio_screen(PAUSE, config, chip8); break;}
                 case(4):{emu_screen(PAUSE, config, chip8); break;}
                 case(5):{pause_screen(config, chip8); break;}
+                case(10):{pause_screen(config, chip8); break;}
                 default:{break;}
             }
             break;
@@ -1165,6 +1203,7 @@ void settings_screen(menu_type menu, config_type* config, chip8_type* chip8){
                 case(3):{audio_screen(MAIN, config, chip8); break;}
                 case(4):{emu_screen(MAIN, config, chip8); break;}
                 case(5):{main_screen(config, chip8); break;}
+                case(10):{main_screen(config, chip8); break;}
                 default:{break;}
             }
             break;
@@ -1182,18 +1221,23 @@ void main_screen(config_type* config, chip8_type *chip8){
     main_menu();
     lcd.refresh();
 
+
     int current_bank = 2;
     bool main_select = false;
 
     while(!main_select){
+        inputs pressed_input = keypad.get_key_pressed();
         menu_input(&current_bank, MAIN, config);
-        button_input(&main_select);
+        switch(pressed_input){
+            default:{break;}
+            case(One):{main_select = true; break;}
+        }
         lcd.clear();
         main_menu();
         lcd.printChar('>', 9, current_bank);
         lcd.refresh();
         
-        ThisThread::sleep_for(50ms);
+        ThisThread::sleep_for(150ms);
     }
 
 
@@ -1289,20 +1333,23 @@ int main(){
 
     joystick_button.fall(&isr);
     joystick_button.mode(PullUp);
+
+    but.fall(&isr_but);
+    but.mode(PullUp);
     user_led = state;
 
 
 
 
-    
+    printf("Starting\n");
 
     main_screen(config, chip8);
-    g_button_flag = 0;
+    g_joystick_flag = 0;
 
     while(chip8->state != OFF){
-        if(g_button_flag){
+        if(g_joystick_flag){
             ThisThread::sleep_for(200ms);
-            g_button_flag = 0;
+            g_joystick_flag = 0;
             state = !state;
             user_led = state;
             switch(chip8->state){
