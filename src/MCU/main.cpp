@@ -18,6 +18,7 @@
 #include "Roms/breakout.h"
 #include "Roms/merlin.h"
 #include "Keypad/keypad.h"
+#include "Music/music.h"
 
 
 
@@ -25,15 +26,17 @@
 
 N5110 lcd(PC_7, PA_9, PB_10, PB_5, PB_3, PA_10);
 InterruptIn joystick_button(PC_10);
+InterruptIn button(BUTTON1);
+DigitalOut led(LED1);
 Joystick stick(PC_3, PC_2);
 Keypad keypad(ARDUINO_UNO_A5, ARDUINO_UNO_A4, ARDUINO_UNO_A3, ARDUINO_UNO_A2, ARDUINO_UNO_A1, ARDUINO_UNO_A0, PH_0, PH_1);
-DigitalOut user_led(LED1);
-InterruptIn but(BUTTON1);
 PwmOut speaker(PC_8);
+DigitalIn but(BUTTON1);
 
 volatile int g_joystick_flag = 0;
 volatile int g_button_flag = 0;
-int state = 0;
+bool off_flag = false;
+
 
 
 Timer t;
@@ -163,7 +166,7 @@ void init_config(config_type *config){
     config->insts_per_sec = 700;
     config->brightness = 0.5f;
     config->contrast = 0.55f;
-    config->volume = 0.5f;
+    config->volume = 1.0f;
     config->freq = 1000;
 
 }
@@ -188,7 +191,7 @@ void init_chip8(chip8_type *chip8, const config_type* config){
 
 
     chip8->pc = entry;
-    chip8->state = QUIT;
+    chip8->state = OFF;
     chip8->stkptr = &chip8->stack[0];
 
    
@@ -231,15 +234,14 @@ bool check_keypad(chip8_type *chip8, uint8_t *key_value){
 }
 
 void emulate(chip8_type *chip8, config_type *config){
-    //bool carry; // Set our carry flag
 
-    //Have to or 2 bytes as one opcode is 2 bytes long 
+
     chip8->inst.opcode.data[0] = chip8->ram[chip8->pc+1];
     chip8->inst.opcode.data[1] = chip8->ram[chip8->pc];
 
     chip8->pc += 2;
 
-    chip8->inst.NNN = chip8->inst.opcode.full_op & 0x0FFF; // Immediate Memory address, we want to mask of the last 3 nibbles
+    chip8->inst.NNN = chip8->inst.opcode.full_op & 0x0FFF; // Immediate Memory address
     chip8->inst.NN = chip8->inst.opcode.full_op & 0x0FF; // 8bit immediate number 
     chip8->inst.N = chip8->inst.opcode.full_op & 0x0F; //N nibble 
     chip8->inst.X = (chip8->inst.opcode.full_op >> 8) & 0x0F; // X register 
@@ -334,43 +336,36 @@ void emulate(chip8_type *chip8, config_type *config){
         }
         case(0xC):{srand(time(NULL)); uint8_t random = rand(); chip8->V[chip8->inst.X] = random & chip8->inst.NN; break;}
         case(0xD):{
-             // 0xDXYN: Draw N-height sprite at coords X,Y; Read from memory location I;
-            //   Screen pixels are XOR'd with sprite bits, 
-            //   VF (Carry flag) is set if any screen pixels are set off; This is useful
-            //   for collision detection or other reasons.
+
             
-            uint8_t X_coord = chip8->V[chip8->inst.X] % 64;
-            uint8_t Y_coord = chip8->V[chip8->inst.Y] % 32;
-            const uint8_t orig_X = X_coord; // Original X value
+            uint8_t x_coord = chip8->V[chip8->inst.X] & 63;
+            uint8_t y_coord = chip8->V[chip8->inst.Y] & 31;
+            const uint8_t x_origin = x_coord; 
 
-            chip8->V[0xF] = 0;  // Initialize carry flag to 0   
+            chip8->V[0xF] = 0;    
 
-            // Loop over all N rows of the sprite
             for (uint8_t i = 0; i < chip8->inst.N; i++) {
-                // Get next byte/row of sprite data
                 const uint8_t sprite_data = chip8->ram[chip8->I + i];
-                X_coord = orig_X;   // Reset X for next row to draw
+                x_coord = x_origin; 
 
-                for (int8_t j = 7; j >= 0; j--) {
-                    // If sprite pixel/bit is on and display pixel is on, set carry flag
-                    bool *pixel = &chip8->display[Y_coord * 64 + X_coord]; 
-                    const bool sprite_bit = (sprite_data & (1 << j));
+                for (int8_t j = 0; j < 8; j++) {
+                    bool *display_pixel = &chip8->display[y_coord * 64 + x_coord]; 
+                    const bool sprite_bit = (sprite_data & (0x80 >> j));
 
-                    if (sprite_bit && *pixel) {
+                    if (sprite_bit && *display_pixel) {
                         chip8->V[0xF] = 1;  
                     }
 
-                    // XOR display pixel with sprite pixel/bit to set it on or off
-                    *pixel ^= sprite_bit;
+                    *display_pixel ^= sprite_bit;
 
-                    // Stop drawing this row if hit right edge of screen
-                    if (++X_coord >= 64) break;
+                    x_coord++;
+                    if (x_coord >= 64){break;}
                 }
 
-                // Stop drawing entire sprite if hit bottom edge of screen
-                if (++Y_coord >= 32) break;
+                y_coord++;
+                if (y_coord >= 32){break;}
             }
-            chip8->draw = true; // Will update screen on next 60hz tick
+            chip8->draw = true;
             break;
         }
         case(0xE):{
@@ -459,12 +454,10 @@ void update_timers(chip8_type *chip8, config_type* config){
 
 void draw(chip8_type *chip8, const config_type *config){
     lcd.clear();
-    // Loop through display pixels, draw a rectangle per pixel to the screen
     for (uint32_t i = 0; i < sizeof chip8->display; i++) {
         const unsigned int x0 = 10 + (i % config->res_x) * config->sf_x;
         const unsigned int y0 = 8 + (i / config->res_x) * config->sf_y;
         if (chip8->display[i]) {
-            // Pixel is on, draw foreground color
             lcd.drawRect(x0, y0, config->sf_x, config->sf_y, config->fg_colour);
         } 
         else {
@@ -474,7 +467,7 @@ void draw(chip8_type *chip8, const config_type *config){
     lcd.refresh();
 }
 
-void end(){
+void end(config_type* config){
     lcd.clear();
    
     int i = 5;
@@ -491,20 +484,36 @@ void end(){
     lcd.clear();
     lcd.printString("   Goodbye", 0, 1);
     lcd.refresh();
-    ThisThread::sleep_for(1s);
 
     lcd.clear();
     lcd.turnOff();
+    init_config(config);
 }
 
 
-void isr(){
+void isr_joy(){
     g_joystick_flag = 1;
 }
 
 void isr_but(){
     g_button_flag = 1;
 }
+
+void power_off(chip8_type* chip8, bool* select, int* current_bank){
+    if(g_button_flag){
+        ThisThread::sleep_for(50ms);
+        *select = true;
+        *current_bank = 15;
+        g_button_flag = 0;
+        off_flag = true;
+        switch(chip8->state){
+            default:{chip8->state = OFF; break;}
+            case(OFF):{chip8->state = QUIT; break;}
+        }
+    }
+
+}
+
 
 void menu_input(int* current_bank, menu_type state, config_type* config){
         Direction dir = stick.get_direction();
@@ -878,6 +887,7 @@ void how_screen(config_type* config, chip8_type* chip8){
     
 
     while(!how_select){
+        power_off(chip8, &how_select, &current_bank);
         inputs pressed_input = keypad.get_key_pressed();
         switch(pressed_input){
             default:{break;}
@@ -890,7 +900,10 @@ void how_screen(config_type* config, chip8_type* chip8){
         ThisThread::sleep_for(150ms);
     }
 
-    game_select_screen(config, chip8);
+    switch(current_bank){
+        case(15):{break;}
+        default:{game_select_screen(config, chip8); break;}
+    }
 }
 
 
@@ -905,6 +918,7 @@ void game_select_screen(config_type *config, chip8_type* chip8){
     
 
     while(!game_select){
+        power_off(chip8, &game_select, &current_bank);
         menu_input(&current_bank, GAME, config);
         inputs pressed_input = keypad.get_key_pressed();
         switch(pressed_input){
@@ -996,6 +1010,7 @@ void audio_screen(menu_type menu, config_type *config, chip8_type* chip8){
     
 
     while(!audio_select){
+        power_off(chip8, &audio_select, &current_bank);
         menu_input(&current_bank, AUDIO, config);
         inputs pressed_input = keypad.get_key_pressed();
         switch(pressed_input){
@@ -1031,6 +1046,7 @@ void emu_screen(menu_type menu, config_type *config, chip8_type *chip8){
     
 
     while(!emu_select){
+        power_off(chip8, &emu_select, &current_bank);
         menu_input(&current_bank, EMU, config);
         inputs pressed_input = keypad.get_key_pressed();
         switch(pressed_input){
@@ -1067,6 +1083,7 @@ void screen_set_screen(menu_type menu, config_type *config, chip8_type* chip8){
     
 
     while(!screen_select){
+        power_off(chip8, &screen_select, &current_bank);
         menu_input(&current_bank, SCREEN, config);
         inputs pressed_input = keypad.get_key_pressed();
         switch(pressed_input){
@@ -1125,6 +1142,7 @@ void pause_screen(config_type* config, chip8_type* chip8){
     bool pause_select = false;
 
     while(g_joystick_flag == 0){
+        power_off(chip8, &pause_select, &current_bank);
         inputs pressed_input = keypad.get_key_pressed();
         switch(pressed_input){
             default:{break;}
@@ -1159,6 +1177,11 @@ void pause_screen(config_type* config, chip8_type* chip8){
 
 
 
+
+
+
+
+
 void settings_screen(menu_type menu, config_type* config, chip8_type* chip8){
     lcd.clear();
     lcd.printChar('>', 9, 2);
@@ -1169,6 +1192,7 @@ void settings_screen(menu_type menu, config_type* config, chip8_type* chip8){
     bool settings_select = false;
 
     while(!settings_select){
+        power_off(chip8, &settings_select, &current_bank);
         inputs pressed_input = keypad.get_key_pressed();
         switch(pressed_input){
             default:{break;}
@@ -1216,6 +1240,9 @@ void settings_screen(menu_type menu, config_type* config, chip8_type* chip8){
 }
 
 void main_screen(config_type* config, chip8_type *chip8){
+    lcd.init(LPH7366_1);
+    lcd.setContrast(config->contrast);      //set contrast to 55%
+    lcd.setBrightness(config->brightness);     //set brightness to 50% (utilises the PWM)
     lcd.clear();
     lcd.printChar('>', 9, 2);
     main_menu();
@@ -1225,7 +1252,11 @@ void main_screen(config_type* config, chip8_type *chip8){
     int current_bank = 2;
     bool main_select = false;
 
+    
+
+
     while(!main_select){
+        power_off(chip8, &main_select, &current_bank);
         inputs pressed_input = keypad.get_key_pressed();
         menu_input(&current_bank, MAIN, config);
         switch(pressed_input){
@@ -1244,6 +1275,7 @@ void main_screen(config_type* config, chip8_type *chip8){
     switch(current_bank){
         case(3):{settings_screen(MAIN, config, chip8); break;}
         case(2):{game_select_screen(config, chip8); break;}
+        case(4):{break;}
     }
     
 }
@@ -1309,6 +1341,17 @@ void game_input(chip8_type *chip8){
     }
 }
 
+void off(config_type* config){
+    lcd.clear();
+    lcd.setBrightness(0.0f);
+    lcd.refresh();
+    init_config(config);
+
+}
+
+
+
+
 
 
 
@@ -1318,44 +1361,43 @@ int main(){
     config_type *config = static_cast<config_type *>(malloc(sizeof(config_type)));
     init_config(config); 
 
-
     chip8_type *chip8 = static_cast<chip8_type *>(malloc(sizeof(chip8_type)));
     chip8->stkptr = static_cast<uint16_t *>(malloc(sizeof(uint16_t)));
     chip8->stkptr = nullptr;
     init_chip8(chip8, config);
 
-
-
-
-    lcd.setContrast(0.55);      //set contrast to 55%
-    lcd.setBrightness(0.5);     //set brightness to 50% (utilises the PWM)
-    lcd.clear();
-
-    joystick_button.fall(&isr);
+    joystick_button.fall(&isr_joy);
     joystick_button.mode(PullUp);
 
-    but.fall(&isr_but);
-    but.mode(PullUp);
-    user_led = state;
+    button.rise(&isr_but);
+    button.mode(PullNone);
 
-
-
+    off(config);
 
     printf("Starting\n");
 
-    main_screen(config, chip8);
     g_joystick_flag = 0;
+    g_button_flag = 0;
 
-    while(chip8->state != OFF){
+
+    while(/*chip8->state != OFF*/ 1){
+        if(g_button_flag){
+            ThisThread::sleep_for(100ms);
+            g_button_flag = 0;
+            off_flag = true;
+            switch(chip8->state){
+                default:{chip8->state = OFF; break;}
+                case(OFF):{chip8->state = QUIT; break;}
+            }
+        }
         if(g_joystick_flag){
             ThisThread::sleep_for(200ms);
             g_joystick_flag = 0;
-            state = !state;
-            user_led = state;
             switch(chip8->state){
                 case(RUNNING):{chip8->state = PAUSED; break;}
                 case(PAUSED):{chip8->draw = true; draw(chip8, config); chip8->state = RUNNING; break;}
                 case(QUIT):{break;}
+                case(OFF):{break;}
             }
         }
 
@@ -1394,6 +1436,14 @@ int main(){
                 main_screen(config, chip8);
                 break;
             }
+
+            case(OFF):{
+                switch(off_flag){
+                    case(true):{end(config); break;}
+                    case(false):{break;}
+                }
+                break;
+            }
         }
         
     }
@@ -1402,29 +1452,9 @@ int main(){
     free(chip8->stkptr);
     free(chip8);
 
-    end();
+    
 
     return 0;
 }
 
-
-
-
-
-
-
-
-/*
-Implement DXYN
-
-
-- Speakers
-    - PWM controlled
-    - Play a tone when device is turned on/off
-    - Play a tone for the games running 
-
-
-- Turn off and on the device - Interrupt
-
-*/
 
