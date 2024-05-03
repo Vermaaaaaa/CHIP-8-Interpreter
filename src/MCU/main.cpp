@@ -39,7 +39,7 @@ bool off_flag = false;
 
 
 
-Timer t;
+LowPowerTimer t;
 
 constexpr uint32_t entry = 0x200; //Entry point for roms to be loaded into memory
 
@@ -1376,6 +1376,7 @@ int main(){
 
     printf("Starting\n");
 
+
     g_joystick_flag = 0;
     g_button_flag = 0;
 
@@ -1408,7 +1409,7 @@ int main(){
             }
             case(RUNNING):{
                 game_input(chip8);
-                
+
                 t.start();
 
                 for(int i = 0; i < config->insts_per_sec / config->clk_speed; i++){
@@ -1417,13 +1418,15 @@ int main(){
 
                 t.stop();
 
-                const std::chrono::milliseconds elapsed_time = std::chrono::duration_cast<std::chrono::milliseconds>(t.elapsed_time());
-                const int duration_ms = static_cast<int>(std::ceil(1.0 / (float)config->clk_speed * 1000));
+                const int duration_ms = static_cast<int>(std::ceil(1.0 / config->clk_speed * 1000));
+
 
                 std::chrono::milliseconds emu_timing(duration_ms);
 
-                ThisThread::sleep_for(emu_timing > elapsed_time ? emu_timing - elapsed_time : std::chrono::milliseconds(0));
 
+                ThisThread::sleep_for(std::chrono::duration_cast<std::chrono::milliseconds>(emu_timing > t.elapsed_time() ? emu_timing - t.elapsed_time() : std::chrono::milliseconds(0)));
+
+                //ThisThread::sleep_for(17ms);
 
                 if(chip8->draw){
                     draw(chip8, config); 
